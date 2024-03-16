@@ -17,44 +17,44 @@ Notation "p %%= q" := (eqpp p q) (at level 70, no associativity).
 
 Global Instance Equivalence_eqp {F : fieldType} : Equivalence (@eqpp F).
 Proof.
-split.
-{
-  unfold Reflexive.
-  unfold eqpp.
-  move=> p; by rewrite eqpxx.
-}
-{
-  unfold Symmetric.
-  unfold eqpp.
-  move=> p q; by rewrite eqp_sym.
-}
-{
-  unfold Transitive.
-  unfold eqpp.
-  move=> p q r.
-  case/andP=> Dp pD; case/andP=> Dq qD.
-  by rewrite /eqp (dvdp_trans Dp) // (dvdp_trans qD).
-}
+  split.
+  {
+    unfold Reflexive.
+    unfold eqpp.
+    move=> p; by rewrite eqpxx.
+  }
+  {
+    unfold Symmetric.
+    unfold eqpp.
+    move=> p q; by rewrite eqp_sym.
+  }
+  {
+    unfold Transitive.
+    unfold eqpp.
+    move=> p q r.
+    case/andP=> Dp pD; case/andP=> Dq qD.
+    by rewrite /eqp (dvdp_trans Dp) // (dvdp_trans qD).
+  }
 Qed.
 
 Global Instance Proper_mulp {F : fieldType} : Proper (@eqpp F ==> @eqpp F ==> @eqpp F) (@GRing.mul {poly F}).
 Proof.
-unfold Proper, respectful, eqpp.
-move=> p q eqp_pq.
-move=> r s eqp_rs.
-eapply eqp_trans, eqp_mull, eqp_rs.
-eapply eqp_trans, eqp_mulr, eqp_pq.
-reflexivity.
+  unfold Proper, respectful, eqpp.
+  move=> p q eqp_pq.
+  move=> r s eqp_rs.
+  eapply eqp_trans, eqp_mull, eqp_rs.
+  eapply eqp_trans, eqp_mulr, eqp_pq.
+  reflexivity.
 Qed.
 
 Global Instance Proper_modp {F : fieldType} : Proper (@eqpp F ==> @eqpp F ==> @eqpp F) (@modp F).
 Proof.
-unfold Proper, respectful, eqpp.
-move=> p q eqp_pq.
-move=> r s eqp_rs.
-eapply eqp_trans, eqp_modpr, eqp_rs.
-eapply eqp_trans, eqp_modpl, eqp_pq.
-reflexivity.
+  unfold Proper, respectful, eqpp.
+  move=> p q eqp_pq.
+  move=> r s eqp_rs.
+  eapply eqp_trans, eqp_modpr, eqp_rs.
+  eapply eqp_trans, eqp_modpl, eqp_pq.
+  reflexivity.
 Qed.
 
 Ltac tac_eqp_rewrite P := change (is_true(?a %= ?b)) with (a %%= b); setoid_rewrite P; unfold eqpp.
@@ -92,8 +92,14 @@ Qed.
 Lemma gcdp_neq0 p q : (gcdp p q != 0) <-> (p != 0) || (q != 0).
 Proof.
   specialize (gcdp_eq0 p q).
-  (* TODO: Follows from gcdp_eq0. *)
-Admitted.
+  split;
+    [apply contra_neqT | apply contraTneq];
+    rewrite negb_or;
+    rewrite !negbK;
+    [move=> imp; apply/eqP | move/eqP=> imp];
+  move: imp;
+  rewrite H //.
+Qed.
 
 Lemma eqp_eq_iff p q: p != 0 -> q != 0 -> p %= q <-> (lead_coef q) *: p = (lead_coef p) *: q.
 Proof.
@@ -173,19 +179,18 @@ Proof.
   move=> pq_ne0 co_pq.
   have gcdpf_p_q_eq1 : gcdpf p q = 1 by
     move: co_pq; rewrite -gcdpf_eq1.
-
   rewrite -gcdpf_p_q_eq1.
 
   unfold gcdpf, e, egcdpf.
-  cbn [fst snd].
+  (*cbn [fst snd].*)
 
   set g := lead_coef (gcdp p q).
 
-  have gcdp_pq_ne0 : gcdp p q != 0 by rewrite gcdp_neq0.
-  have lcf_gcd_pq_ne0 : lead_coef (gcdp p q) != 0
-    by rewrite lead_coef_neq0.
+  have gcdp_pq_ne0 : gcdp p q != 0 by
+    rewrite gcdp_neq0.
+  have lcf_gcd_pq_ne0 : lead_coef (gcdp p q) != 0 by
+    rewrite lead_coef_neq0.
 
-  (* TODO: Follows from egcdpE and coprimep. *)
   have bezout_ne0 : (egcdp p q).1 * p + (egcdp p q).2 * q != 0 by
     rewrite Bezout_ne0.
   have lcf_bezout_ne0 : lead_coef ((egcdp p q).1 * p + (egcdp p q).2 * q) != 0 by
@@ -209,28 +214,17 @@ Proof.
     by rewrite size_polyC lcf_bezout_ne0.
   by rewrite coefC /= unitfE.
 
-  rewrite -!mul_polyC.
-  rewrite -!mulrA.
-  rewrite -mulrDr.
+  rewrite -!mul_polyC -!mulrA -mulrDr.
 
   apply (@mulrI _ g%:P g_unit).
-  rewrite mulrA.
-  rewrite [LHS]mulrC.
-  rewrite -polyCV.
-  rewrite (mulrV g_unit).
-  rewrite mulr1.
+  rewrite -polyCV mulrA (mulrV g_unit) mul1r.
 
   rewrite [RHS]mulrC.
   apply (@mulrI _ x%:P x_unit).
-  rewrite !mulrA.
-  rewrite -polyCV.
-  rewrite -mulrA.
-  rewrite (mulrV x_unit).
-  rewrite mul1r.
+  rewrite -polyCV !mulrA (mulrV x_unit) mul1r.
   rewrite [RHS]mulrC.
 
   rewrite !mul_polyC.
-  unfold g, x.
   rewrite -(eqp_eq_iff gcdp_pq_ne0 bezout_ne0).
 
   apply (egcdpE p q).
@@ -245,10 +239,10 @@ Hypothesis co_m1_m2 : coprimep m1 m2.
 Lemma poly_crtf r1 r2 :
   exists x, x %% m1 = r1 %% m1 /\ x %% m2 = r2 %% m2.
 Proof.
-move: co_m1_m2; case/Bezout_eq1_coprimepP; move=> [u v] /= uv_eqn.
-exists (r1 * v * m2 + r2 * u * m1); split.
-by rewrite -{2}[r1]mulr1 -uv_eqn mulrDr addrC !mulrA !modpD !modp_mull.
-by rewrite -{2}[r2]mulr1 -uv_eqn mulrDr addrC !mulrA !modpD !modp_mull.
+  move: co_m1_m2; case/Bezout_eq1_coprimepP; move=> [u v] /= uv_eqn.
+  exists (r1 * v * m2 + r2 * u * m1); split.
+    by rewrite -{2}[r1]mulr1 -uv_eqn mulrDr addrC !mulrA !modpD !modp_mull.
+  by rewrite -{2}[r2]mulr1 -uv_eqn mulrDr addrC !mulrA !modpD !modp_mull.
 Qed.
 
 Definition pchinese r1 r2 (e := egcdpf m1 m2) :=
@@ -256,25 +250,25 @@ Definition pchinese r1 r2 (e := egcdpf m1 m2) :=
 
 Lemma pchinese_modl r1 r2 : pchinese r1 r2 %% m1 = r1 %% m1.
 Proof.
-rewrite /pchinese.
-have nz_m1_or_m2: (m1 != 0) || (m2 != 0) by rewrite nz_m1 nz_m2.
-have gcd_eqn := egcdpf_eq1 nz_m1_or_m2 co_m1_m2.
-by rewrite -{2}[r1]mulr1 gcd_eqn mulrDr addrC !mulrA !modpD !modp_mull.
+  rewrite /pchinese.
+  have nz_m1_or_m2: (m1 != 0) || (m2 != 0) by rewrite nz_m1 nz_m2.
+  have gcd_eqn := egcdpf_eq1 nz_m1_or_m2 co_m1_m2.
+  by rewrite -{2}[r1]mulr1 gcd_eqn mulrDr addrC !mulrA !modpD !modp_mull.
 Qed.
 
 Lemma pchinese_modr r1 r2 : pchinese r1 r2 %% m2 = r2 %% m2.
 Proof.
-rewrite /pchinese.
-have nz_m1_or_m2: (m1 != 0) || (m2 != 0) by rewrite nz_m1 nz_m2.
-have gcd_eqn := egcdpf_eq1 nz_m1_or_m2 co_m1_m2.
-by rewrite -{2}[r2]mulr1 gcd_eqn mulrDr addrC !mulrA !modpD !modp_mull.
+  rewrite /pchinese.
+  have nz_m1_or_m2: (m1 != 0) || (m2 != 0) by rewrite nz_m1 nz_m2.
+  have gcd_eqn := egcdpf_eq1 nz_m1_or_m2 co_m1_m2.
+  by rewrite -{2}[r2]mulr1 gcd_eqn mulrDr addrC !mulrA !modpD !modp_mull.
 Qed.
 
 Lemma eqp_mod_dvd d p q : (p %% d == q %% d) = (d %| p - q).
 Proof.
-apply/eqP/modp_eq0P => eq_pq.
-  by rewrite modpD eq_pq -modpD subrr mod0p.
-by rewrite -(subrK q p) modpD eq_pq add0r.
+  apply/eqP/modp_eq0P => eq_pq.
+    by rewrite modpD eq_pq -modpD subrr mod0p.
+  by rewrite -(subrK q p) modpD eq_pq add0r.
 Qed.
 
 Lemma pchinese_remainder r1 r2 :
@@ -284,8 +278,8 @@ Qed.
 
 Lemma pchinese_mod p : p %% (m1 * m2) == pchinese (p %% m1) (p %% m2) %% (m1 * m2).
 Proof.
-rewrite pchinese_remainder pchinese_modl pchinese_modr !modp_mod.
-by apply/andP; split; apply/eqP.
+  rewrite pchinese_remainder pchinese_modl pchinese_modr !modp_mod.
+  by apply/andP; split; apply/eqP.
 Qed.
 
 End PolyCRT_Field.

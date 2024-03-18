@@ -9,60 +9,6 @@ Local Open Scope ring_scope.
 
 Section PolyCRT_Field.
 
-Import Coq.Classes.Morphisms.
-Import Coq.Classes.RelationClasses.
-
-Definition eqpp {F : fieldType} p q := is_true(@eqp F p q).
-Notation "p %%= q" := (eqpp p q) (at level 70, no associativity).
-
-Global Instance Equivalence_eqp {F : fieldType} : Equivalence (@eqpp F).
-Proof.
-  split.
-  {
-    unfold Reflexive.
-    unfold eqpp.
-    move=> p; by rewrite eqpxx.
-  }
-  {
-    unfold Symmetric.
-    unfold eqpp.
-    move=> p q; by rewrite eqp_sym.
-  }
-  {
-    unfold Transitive.
-    unfold eqpp.
-    move=> p q r.
-    case/andP=> Dp pD; case/andP=> Dq qD.
-    by rewrite /eqp (dvdp_trans Dp) // (dvdp_trans qD).
-  }
-Qed.
-
-Global Instance Proper_mulp {F : fieldType} : Proper (@eqpp F ==> @eqpp F ==> @eqpp F) (@GRing.mul {poly F}).
-Proof.
-  unfold Proper, respectful, eqpp.
-  move=> p q eqp_pq.
-  move=> r s eqp_rs.
-  eapply eqp_trans, eqp_mull, eqp_rs.
-  eapply eqp_trans, eqp_mulr, eqp_pq.
-  reflexivity.
-Qed.
-
-Global Instance Proper_modp {F : fieldType} : Proper (@eqpp F ==> @eqpp F ==> @eqpp F) (@modp F).
-Proof.
-  unfold Proper, respectful, eqpp.
-  move=> p q eqp_pq.
-  move=> r s eqp_rs.
-  eapply eqp_trans, eqp_modpr, eqp_rs.
-  eapply eqp_trans, eqp_modpl, eqp_pq.
-  reflexivity.
-Qed.
-
-Ltac tac_eqp_rewrite P := change (is_true(?a %= ?b)) with (a %%= b); setoid_rewrite P; unfold eqpp.
-Ltac tac_eqp_rewrite_rev P := change (is_true(?a %= ?b)) with (a %%= b); setoid_rewrite <- P; unfold eqpp.
-Tactic Notation "eqp_rewrite" constr(P) := tac_eqp_rewrite P.
-Tactic Notation "eqp_rewrite" "<- "constr(P) := tac_eqp_rewrite_rev P.
-
-
 Variable F : fieldType.
 Implicit Types c : F.
 Implicit Types p q : {poly F}.
@@ -139,16 +85,16 @@ Definition gcdpf p q :=
 
 Lemma gcdpf_eq1 p q : (p != 0) || (q != 0) -> (gcdpf p q = 1) <-> coprimep p q.
 Proof.
-  intros.
+  move=> poq_ne0.
+  have gcd_pq_ne0 : (gcdp p q) != 0 by rewrite gcdp_neq0; apply poq_ne0.
   unfold gcdpf, coprimep.
   rewrite size_poly_eq1.
-  rewrite eqp_eq_iff.
-  rewrite lead_coefC.
-  rewrite mul_inv_coef_l_eq1_iff.
-  rewrite alg_polyC.
-  by rewrite scale1r.
-  rewrite lead_coef_neq0.
-    1, 2 : by rewrite gcdp_neq0; apply H.
+  rewrite (eqp_eq_iff gcd_pq_ne0).
+    rewrite lead_coefC.
+    rewrite mul_inv_coef_l_eq1_iff.
+      rewrite alg_polyC.
+      by rewrite scale1r.
+    by rewrite lead_coef_neq0; apply gcd_pq_ne0.
   by apply oner_neq0.
 Qed.
 
@@ -161,16 +107,17 @@ Definition egcdpf p q :=
 Lemma eqp1_ne0 p : (p %= 1) -> (p != 0).
 Proof.
   unfold eqp.
-  rewrite dvdp1 dvd1p Bool.andb_true_r.
+  rewrite dvdp1 dvd1p andbT.
   by move/eqP => x; rewrite -size_poly_gt0 x.
 Qed.
 
 Lemma Bezout_ne0 p q (e := egcdp p q) : coprimep p q -> e.1 * p + e.2 * q != 0.
 Proof.
   specialize (egcdpE p q). fold e. cbn [fst snd]. move=> gcd_eqn.
+  rewrite eqp_sym in gcd_eqn.
+  eapply eqp_trans in gcd_eqn.
   rewrite -gcdp_eqp1=> gcd_eq1.
-  (* Can probably do this directly instead of using eqp_rewrite. *)
-  move: gcd_eqn; eqp_rewrite gcd_eq1; rewrite eqp_sym=> gcd_eqn.
+  specialize (gcd_eqn gcd_eq1).
   by rewrite eqp1_ne0.
 Qed.
 
@@ -279,7 +226,7 @@ Qed.
 Lemma pchinese_mod p : p %% (m1 * m2) == pchinese (p %% m1) (p %% m2) %% (m1 * m2).
 Proof.
   rewrite pchinese_remainder pchinese_modl pchinese_modr !modp_mod.
-  by apply/andP; split; apply/eqP.
+  by apply/andP.
 Qed.
 
 End PolyCRT_Field.

@@ -220,6 +220,7 @@ Qed.
 
 Lemma pchinese_remainder r1 r2 :
   (r1 %% (m1 * m2) == r2 %% (m1 * m2)) = (r1 %% m1 == r2 %% m1) && (r1 %% m2 == r2 %% m2).
+Proof.
   by rewrite !eqp_mod_dvd Gauss_dvdp.
 Qed.
 

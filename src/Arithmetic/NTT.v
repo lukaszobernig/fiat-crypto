@@ -94,41 +94,13 @@ Context (w_2m_primroot : (2^m).-primitive_root w).
 
   Context (k_bounded_m : (k <= m)%N).
   Context (k_positive : (0 < k)%N).
+  Context (size_p_bounded : (size p < (2^k).+1)%N).
   Context (h_idx_bounded : forall i, (rec_idx k' i < 2^k')%N).
   Context (h_size_rec_ntt : forall l p, (size (rec_ntt k' l p) = 2^k')%N).
   Context (h_rec_ntt :
     forall i l (p : {poly F}) (e := (i*2^(m - k') + l)%N),
       (k' <= m)%N -> (size p < (2^k').+1)%N -> p.[w ^+ e] = nth w (rec_ntt k' l p) (rec_idx k' i)
   ).
-
-  (* This also implies m1 and m2 coprime. *)
-  Let a := w ^+ (2 ^ k') ^ l.
-  Let b := w ^+ (2 ^ k') ^ (l + 2 ^ (m - k))%N.
-  Let u := (b - a)^-1.
-  Let v := (a - b)^-1. (* v = -u. *)
-  Lemma linear_relation_m1_m2 : u%:P * m1 + v%:P * m2 = 1.
-  Proof.
-    unfold m1, m2, modulus.
-    fold a.
-    fold b.
-  Admitted.
-
-  Lemma coprime_m1_m2 : coprimep m1 m2.
-  Proof.
-    apply/(Bezout_eq1_coprimepP m1 m2).
-    exists (u%:P, v%:P).
-    apply linear_relation_m1_m2.
-  Qed.
-
-  Definition egcdpf (p q : {poly F}) := let e := egcdp p q in let c := lead_coef (e.1 * p + e.2 * q) in (c^-1 *: e.1, c^-1 *: e.2).
-  Definition pchinese r1 r2 (e := egcdpf m1 m2) := r1 * e.2 * m2 + r2 * e.1 * m1.
-  Lemma pchinese_mod (r : {poly F}) : r %% (m1 * m2) == pchinese (r %% m1) (r %% m2) %% (m1 * m2). Admitted.
-
-  Lemma modulus_split : (modulus k l) = (modulus k' l) * (modulus k' (l + 2^(m - k))). Admitted.
-
-  Lemma hCRT : exists (u v : {poly F}), p = p1 * v * m2 + p2 * u * m1. Admitted.
-  Lemma hCRT1 : exists (u : {poly F}), p = p1 + (p2 - p1) * u * m1. Admitted.
-  Lemma hCRT2 : exists (v : {poly F}), p = p2 + (p1 - p2) * v * m2. Admitted.
 
   Lemma def_k : (k' = k - 1)%N.
   Proof.
@@ -148,6 +120,80 @@ Context (w_2m_primroot : (2^m).-primitive_root w).
   Proof.
     case odd eqn:h; rewrite mulnC exprM w_neg1 -signr_odd h //.
   Qed.
+
+  Lemma modulus_split : m1 * m2 = (modulus k l).
+  Proof.
+    unfold m1, m2, modulus.
+    rewrite !mulrDl !mulrDr.
+  Admitted.
+
+  Let a := w ^+ (2 ^ k') ^ l.
+  Let b := w ^+ (2 ^ k') ^ (l + 2 ^ (m - k))%N.
+  Let u := (b - a)^-1.
+  Let v := (a - b)^-1. (* v = -u. *)
+  Lemma linear_relation_m1_m2 : u%:P * m1 + v%:P * m2 = 1.
+  Proof.
+    unfold m1, m2, modulus.
+    fold a.
+    fold b.
+  Admitted.
+
+  Lemma coprime_m1_m2 : coprimep m1 m2.
+  Proof.
+    apply/(Bezout_eq1_coprimepP m1 m2).
+    exists (u%:P, v%:P).
+    apply linear_relation_m1_m2.
+  Qed.
+
+  Let crt_p := p1 * v%:P * m2 + p2 * u%:P * m1.
+
+  Lemma crt_p_size : (size crt_p < (2 ^ k).+1)%N. Admitted.
+
+  Lemma crt_p_modl : crt_p %% m1 = p1 %% m1.
+  Proof.
+    unfold crt_p.
+    by rewrite -{2}[p1]mulr1 -linear_relation_m1_m2 (mulrDr p1) addrC !mulrA !modpD !modp_mull.
+  Qed.
+
+  Lemma crt_p_modr : crt_p %% m2 = p2 %% m2.
+  Proof.
+    unfold crt_p.
+    by rewrite -{2}[p2]mulr1 -linear_relation_m1_m2 (mulrDr p2) addrC !mulrA !modpD !modp_mull.
+  Qed.
+
+  Lemma eqp_mod_dvd (d r s : {poly F}) : (r %% d == s %% d) = (d %| r - s).
+  Proof.
+    apply/eqP/modp_eq0P => eq_rs.
+      by rewrite modpD eq_rs -modpD subrr mod0p.
+    by rewrite -(subrK s r) modpD eq_rs add0r.
+  Qed.
+
+  Lemma rem_m1_m2 (r s : {poly F}) : (r %% (m1 * m2) == s %% (m1 * m2)) = (r %% m1 == s %% m1) && (r %% m2 == s %% m2).
+  Proof.
+    by rewrite !eqp_mod_dvd (Gauss_dvdp _ coprime_m1_m2).
+  Qed.
+
+  Lemma crt_p_mod : p %% (m1 * m2) == crt_p %% (m1 * m2).
+  Proof.
+    rewrite rem_m1_m2 crt_p_modl crt_p_modr !modp_mod.
+    by apply/andP.
+  Qed.
+
+  Lemma p_decomp : p = p1 * v%:P * m2 + p2 * u%:P * m1.
+  Proof.
+    specialize crt_p_mod.
+    rewrite modulus_split.
+    rewrite modp_small.
+    rewrite modp_small.
+    move/eqP=> H.
+    by apply H.
+    rewrite modulus_size.
+    by apply crt_p_size.
+    by rewrite modulus_size.
+  Qed.
+
+  Lemma p_decomp_m1 : p = p1 + (p2 - p1) * u%:P * m1. Admitted.
+  Lemma p_decomp_m2 : p = p2 + (p1 - p2) * v%:P * m2. Admitted.
 
   Let e := (i*2^(m - k) + l)%N.
   Lemma zero_even_odd : if odd i then m2.[w ^+ e] = 0 else m1.[w ^+ e] = 0.
@@ -177,8 +223,7 @@ Context (w_2m_primroot : (2^m).-primitive_root w).
   Proof.
     pose proof zero_even_odd as mi_eval_0.
     case odd eqn:h;
-      [specialize hCRT2; move=> [q hCRT2]; rewrite hCRT2 |
-       specialize hCRT1; move=> [q hCRT1]; rewrite hCRT1];
+      [rewrite p_decomp_m2 | rewrite p_decomp_m1];
       by rewrite hornerD !hornerM mi_eval_0 mulr0 addr0.
   Qed.
 
@@ -302,8 +347,5 @@ Proof.
 Qed.
 
 End WithMAndWPrimRoot.
-
-(*Compute mkseq Nat.div2 8.
-Compute mkseq (idx 3) 8.*)
 
 End NTT.

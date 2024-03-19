@@ -12,14 +12,12 @@ Section NTT.
 Variable F : fieldType.
 Variable w : F.
 
-(* Maybe not required. *)
-Lemma poly_size1 (p : {poly F}) : (size p <= 1)%N -> p = (p`_0)%:P.
+(* https://github.com/thery/mathcomp-extra/blob/master/fft.v#L41 *)
+Lemma prim_exp2nS n : (2 ^ n.+1).-primitive_root w -> w ^+ (2 ^ n) = -1.
 Proof.
-  move=> H.
-  rewrite -[LHS]coefK poly_def.
-  case size_p : size H => [|[]] // _.
-  by rewrite big_ord0 -[p]coefK size_p poly_def big_ord0 coefC.
-  by rewrite big_ord1 alg_polyC.
+  move=> H; have /prim_expr_order/eqP := H.
+  rewrite expnS mulnC exprM sqrf_eq1 => /orP[]/eqP // /eqP.
+  by rewrite -(prim_order_dvd H) dvdn_Pexp2l // ltnn.
 Qed.
 
 (* Helper lemma. *)
@@ -32,7 +30,7 @@ Qed.
 
 (* The modulus we use. *)
 Definition modulus (k l : nat) :=
-  'X^(2^k) - ((w^(2^k))^l)%:P.
+  'X^(2^k) - (w ^+ (2^k) ^+ l)%:P.
 
 (* The modulus is a monic polynomial. *)
 Lemma modulus_monic (k l : nat) :
@@ -42,7 +40,7 @@ Proof.
   rewrite monicE lead_coefDl.
   by rewrite lead_coefXn.
   rewrite size_polyXn size_opp size_polyC.
-  case: (((w ^ 2 ^ k) ^ l)%R != 0) => /=.
+  case: ((w ^+ (2 ^ k) ^ l)%R != 0) => /=.
   by rewrite -(addn1 (2^k)) -{1}(add0n 1%N) ltn_add2r expn_gt0.
   by rewrite ltn0Sn.
 Qed.
@@ -63,14 +61,17 @@ Proof.
   rewrite size_addl.
   by rewrite size_polyXn.
   rewrite size_polyXn size_opp size_polyC.
-  case: (((w ^ 2 ^ k) ^ l)%R != 0) => /=.
+  case: ((w ^+ (2 ^ k) ^ l)%R != 0) => /=.
   by rewrite -(addn1 (2^k)) -{1}(add0n 1%N) ltn_add2r expn_gt0.
   by rewrite ltn0Sn.
 Qed.
 
-Section WithM.
+Section WithMAndWPrimRoot.
 
-Context (m : nat).
+Context
+  (m : nat)
+  (m_positive : (0 < m)%N).
+Context (w_2m_primroot : (2^m).-primitive_root w).
 
   Section InductiveCase.
 
@@ -97,12 +98,12 @@ Context (m : nat).
   Context (h_size_rec_ntt : forall l p, (size (rec_ntt k' l p) = 2^k')%N).
   Context (h_rec_ntt :
     forall i l (p : {poly F}) (e := (i*2^(m - k') + l)%N),
-      (k' <= m)%N -> (size p < (2^k').+1)%N -> p.[w^e] = nth w (rec_ntt k' l p) (rec_idx k' i)
+      (k' <= m)%N -> (size p < (2^k').+1)%N -> p.[w ^+ e] = nth w (rec_ntt k' l p) (rec_idx k' i)
   ).
 
   (* This also implies m1 and m2 coprime. *)
-  Let a := (w ^ 2 ^ k') ^ l.
-  Let b := (w ^ 2 ^ k') ^ (l + 2 ^ (m - k))%N.
+  Let a := w ^+ (2 ^ k') ^ l.
+  Let b := w ^+ (2 ^ k') ^ (l + 2 ^ (m - k))%N.
   Let u := (b - a)^-1.
   Let v := (a - b)^-1. (* v = -u. *)
   Lemma linear_relation_m1_m2 : u%:P * m1 + v%:P * m2 = 1.
@@ -119,21 +120,60 @@ Context (m : nat).
     apply linear_relation_m1_m2.
   Qed.
 
-  Lemma hCRT : exists (u v : {poly F}), p = p1 * v * m2 + p2 * u * m1.
-  Proof.
-    (*specialize hBezout.
-    move=> [u [v hBezout]].
-    exists u, v.
-    unfold p1, p2.*)
-  Admitted.
+  Definition egcdpf (p q : {poly F}) := let e := egcdp p q in let c := lead_coef (e.1 * p + e.2 * q) in (c^-1 *: e.1, c^-1 *: e.2).
+  Definition pchinese r1 r2 (e := egcdpf m1 m2) := r1 * e.2 * m2 + r2 * e.1 * m1.
+  Lemma pchinese_mod (r : {poly F}) : r %% (m1 * m2) == pchinese (r %% m1) (r %% m2) %% (m1 * m2). Admitted.
+
+  Lemma modulus_split : (modulus k l) = (modulus k' l) * (modulus k' (l + 2^(m - k))). Admitted.
+
+  Lemma hCRT : exists (u v : {poly F}), p = p1 * v * m2 + p2 * u * m1. Admitted.
   Lemma hCRT1 : exists (u : {poly F}), p = p1 + (p2 - p1) * u * m1. Admitted.
   Lemma hCRT2 : exists (v : {poly F}), p = p2 + (p1 - p2) * v * m2. Admitted.
 
+  Lemma def_k : (k' = k - 1)%N.
+  Proof.
+    unfold k.
+    by rewrite -addn1 addnK.
+  Qed.
+
+  Lemma w_neg1 : w ^+ (2 ^ (m - 1)) = -1.
+  Proof.
+    apply prim_exp2nS.
+    rewrite subn1 prednK //.
+  Qed.
+
+  Lemma w_even_odd : if odd i then
+    w ^+ (i * 2 ^ (m - 1)) = -1 else
+    w ^+ (i * 2 ^ (m - 1)) = 1.
+  Proof.
+    case odd eqn:h; rewrite mulnC exprM w_neg1 -signr_odd h //.
+  Qed.
+
   Let e := (i*2^(m - k) + l)%N.
-  Lemma zero_even_odd : if odd i then m2.[w^e] = 0 else m1.[w^e] = 0. Admitted.
+  Lemma zero_even_odd : if odd i then m2.[w ^+ e] = 0 else m1.[w ^+ e] = 0.
+  Proof.
+    pose proof w_even_odd.
+    unfold m1, m2, modulus, e.
+    case odd eqn:h; rewrite !hornerE def_k -!exprM mulnDl -mulnA.
+    {
+      rewrite mulnDr (mulnC (2 ^ (k - 1))%N l) (mulnC (2 ^ (k - 1))%N (2 ^ (m - k))%N).
+      rewrite -!expnD !addnBA.
+      rewrite !subnK.
+      by rewrite !exprD mulrC w_neg1 H addrN.
+      apply k_bounded_m.
+      apply k_positive.
+    }
+    {
+      rewrite -expnD addnBA.
+      rewrite subnK.
+      by rewrite (mulnC (2 ^ (k - 1))%N l) exprD H mul1r addrN.
+      apply k_bounded_m.
+      apply k_positive.
+    }
+  Qed.
 
   Lemma p_eval_w_p1_p2 :
-    p.[w^e] = if odd i then p2.[w^e] else p1.[w^e].
+    p.[w ^+ e] = if odd i then p2.[w ^+ e] else p1.[w ^+ e].
   Proof.
     pose proof zero_even_odd as mi_eval_0.
     case odd eqn:h;
@@ -150,12 +190,6 @@ Context (m : nat).
     by rewrite modulus_size.
   Qed.
 
-  Lemma def_k : (k' = k - 1)%N.
-  Proof.
-    unfold k.
-    by rewrite -addn1 addnK.
-  Qed.
-
   Lemma kp_bounded_m : (k' <= m)%N.
   Proof.
     rewrite def_k subn1.
@@ -168,22 +202,15 @@ Context (m : nat).
     (i./2 * 2 ^ (m - k'))%N.
   Proof.
     intros.
-    rewrite def_k.
-    rewrite subnCBA.
-    rewrite -addnBA.
-    rewrite add1n expnS mulnA muln2 even_halfK //.
-    by rewrite H.
-    apply k_bounded_m.
-    apply k_positive.
+    rewrite def_k (subnCBA _ k_positive) -(addnBA _ k_bounded_m).
+    by rewrite add1n expnS mulnA muln2 even_halfK // H.
   Qed.
 
   Lemma id_odd : odd i = true -> (i * 2 ^ (m - k) + l)%N =
     (i./2 * 2 ^ (m - k') + (l + 2 ^ (m - k)))%N.
   Proof.
     intros.
-    rewrite def_k.
-    rewrite subnCBA.
-    rewrite -addnBA.
+    rewrite def_k (subnCBA _ k_positive) -(addnBA _ k_bounded_m).
     rewrite add1n expnS mulnA muln2 odd_halfK //.
     rewrite -subn1 mulnBl mul1n (addnC l _) addnA.
     nat_congr.
@@ -194,12 +221,10 @@ Context (m : nat).
     case i eqn:h.
     by []. (* Contradiction with i being odd. *)
     by rewrite -(addn1 n) mulnDl mul1n leq_addl.
-    apply k_bounded_m.
-    apply k_positive.
   Qed.
 
   Lemma p_eval_w_ntt :
-    p.[w^e] = nth w ntt_body' idx_body'.
+    p.[w ^+ e] = nth w ntt_body' idx_body'.
   Proof.
     rewrite p_eval_w_p1_p2.
     unfold ntt_body', idx_body', idx'.
@@ -210,20 +235,17 @@ Context (m : nat).
       case (_ < 2 ^ k')%N eqn:hh.
       by rewrite nat_add_lt in hh.
       unfold rhs, e.
-      rewrite -h_rec_ntt.
-      do 3 f_equal.
+      rewrite -(h_rec_ntt _ _ kp_bounded_m).
+      do 2 f_equal.
       rewrite id_odd //.
-      apply kp_bounded_m.
       apply size_p_mod_modulus.
     }
     {
       rewrite h_idx_bounded.
       unfold lhs, e.
-      rewrite -h_rec_ntt.
-      do 4 f_equal.
+      rewrite -(h_rec_ntt _ _ kp_bounded_m).
+      do 2 f_equal.
       rewrite id_even //.
-      unfold p1, m1.
-      apply kp_bounded_m.
       apply size_p_mod_modulus.
     }
   Qed.
@@ -258,8 +280,7 @@ Qed.
 Lemma idx_bounded :
   forall k i, (idx k i < 2^k)%N.
 Proof.
-  induction k; cbn [idx idx_body]; intros.
-  trivial.
+  induction k; cbn [idx idx_body]; intros; trivial.
   unfold idx_body'.
   case odd eqn:h; rewrite -(addn1 k) expnD expn1 muln2; rewrite -addnn.
   by rewrite ltn_add2r.
@@ -268,7 +289,7 @@ Qed.
 
 Lemma ntt_correct :
   forall k i l (p : {poly F}), (k <= m)%N -> (size p < (2^k).+1)%N ->
-  p.[w^(i*2^(m - k) + l)%N] = nth w (ntt k l p) (idx k i).
+  p.[w ^+ (i*2^(m - k) + l)] = nth w (ntt k l p) (idx k i).
 Proof.
   induction k; cbn [ntt idx ntt_body idx_body]; intros.
   rewrite nth0 /head subn0 horner_coef.
@@ -280,6 +301,9 @@ Proof.
   apply size_ntt.
 Qed.
 
-End WithM.
+End WithMAndWPrimRoot.
+
+(*Compute mkseq Nat.div2 8.
+Compute mkseq (idx 3) 8.*)
 
 End NTT.

@@ -121,10 +121,22 @@ Context (w_2m_primroot : (2^m).-primitive_root w).
     case odd eqn:h; rewrite mulnC exprM w_neg1 -signr_odd h //.
   Qed.
 
+  Ltac r := repeat rewrite ?polyCN ?mulrDl ?mulrDr ?mulrN1 ?mulN1r ?mulrNN ?mulrN ?mulNr -?exprD ?opprK ?addrA ?addrK.
   Lemma modulus_split : m1 * m2 = (modulus k l).
   Proof.
     unfold m1, m2, modulus.
-    rewrite !mulrDl !mulrDr.
+    rewrite def_k; r.
+
+    assert ((2 ^ (k - 1) + 2 ^ (k - 1) = 2^k)%N) as ->.
+    by rewrite addnn -muln2 mulnC -def_k expnS.
+
+    assert (
+      w ^+ (2 ^ (k - 1)) ^+ (l + 2 ^ (m - k)) =
+      - w ^+ (2 ^ (k - 1)) ^+ l) as ->. admit. (* using w_neg1 *)
+
+    rewrite ?(mulrC _ ('X^_)); r.
+    do 2 f_equal.
+    by rewrite -polyCM -exprD -!exprM addnn -muln2 mulnA mulnC -def_k expnS mulnA.
   Admitted.
 
   Let a := w ^+ (2 ^ k') ^ l.
@@ -145,9 +157,14 @@ Context (w_2m_primroot : (2^m).-primitive_root w).
     apply linear_relation_m1_m2.
   Qed.
 
+  (* **************** *)
   Let crt_p := p1 * v%:P * m2 + p2 * u%:P * m1.
 
-  Lemma crt_p_size : (size crt_p < (2 ^ k).+1)%N. Admitted.
+  Lemma crt_p_size : (size crt_p < (2 ^ k).+1)%N.
+  Proof.
+    unfold crt_p.
+    (*apply size_add.*)
+  Admitted.
 
   Lemma crt_p_modl : crt_p %% m1 = p1 %% m1.
   Proof.
@@ -192,8 +209,57 @@ Context (w_2m_primroot : (2^m).-primitive_root w).
     by rewrite modulus_size.
   Qed.
 
-  Lemma p_decomp_m1 : p = p1 + (p2 - p1) * u%:P * m1. Admitted.
-  Lemma p_decomp_m2 : p = p2 + (p1 - p2) * v%:P * m2. Admitted.
+  Lemma p_decomp_m1 : p = p1 + (p2 - p1) * u%:P * m1.
+  Proof.
+    have eq : v%:P * m2 = 1 - u%:P * m1 by
+      apply (@addIr _ (u%:P * m1));
+      rewrite subrK addrC linear_relation_m1_m2.
+    specialize p_decomp.
+    rewrite -(mulrA p1) eq (mulrDr p1) mulr1 -(mulrA p2).
+    move=> H.
+    rewrite -mulrA mulrDl -mulrN1 -(mulrA p1) mulN1r addrC -addrA -(addrC p1) addrC.
+    by apply H.
+  Qed.
+
+  Lemma p_decomp_m2 : p = p2 + (p1 - p2) * v%:P * m2.
+  Proof.
+    have eq : u%:P * m1 = 1 - v%:P * m2 by
+      apply (@addIr _ (v%:P * m2));
+      rewrite subrK linear_relation_m1_m2.
+    specialize p_decomp.
+    rewrite -(mulrA p2) eq (mulrDr p2) mulr1 -(mulrA p1).
+    move=> H.
+    rewrite -mulrA mulrDl -mulrN1 -(mulrA p2) mulN1r addrC -addrA -(addrC p2).
+    by apply H.
+  Qed.
+
+  (* **************** *)
+
+  (* **************** *)
+  (*Definition egcdpf (p q : {poly F}) := let e := egcdp p q in let c := lead_coef (e.1 * p + e.2 * q) in (c^-1 *: e.1, c^-1 *: e.2).
+  Definition pchinese r1 r2 (e := egcdpf m1 m2) := r1 * e.2 * m2 + r2 * e.1 * m1.
+  Lemma pchinese_mod (r : {poly F}) : r %% (m1 * m2) == pchinese (r %% m1) (r %% m2) %% (m1 * m2). Admitted.
+  Lemma size_ecgdpf_m1_m2 : (size (egcdp m1 m2).1 = 1)%N /\ (size (egcdp m1 m2).2 = 1)%N. Admitted. (* Needs this assumption. *)
+  Lemma hCRT : exists (u v : {poly F}), p = p1 * v * m2 + p2 * u * m1.
+  Proof.
+    specialize (pchinese_mod p).
+    rewrite modulus_split.
+    rewrite modp_small.
+    rewrite modp_small.
+    unfold pchinese.
+    move/eqP=> H.
+    exists (egcdpf m1 m2).1, (egcdpf m1 m2).2.
+    apply H.
+    rewrite modulus_size.
+    unfold pchinese.
+    fold p1 p2.
+    admit.
+    rewrite modulus_size //.
+  Admitted.
+  Lemma hCRT1 : exists (u : {poly F}), p = p1 + (p2 - p1) * u * m1. Admitted.
+  Lemma hCRT2 : exists (v : {poly F}), p = p2 + (p1 - p2) * v * m2. Admitted.*)
+  (* [specialize p_decomp_m2; move=> [q hCRT2]; rewrite hCRT2 | specialize p_decomp_m1; move=> [q hCRT1]; rewrite hCRT1] *)
+  (* **************** *)
 
   Let e := (i*2^(m - k) + l)%N.
   Lemma zero_even_odd : if odd i then m2.[w ^+ e] = 0 else m1.[w ^+ e] = 0.

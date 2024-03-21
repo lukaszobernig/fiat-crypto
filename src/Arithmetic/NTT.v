@@ -121,7 +121,13 @@ Context (w_2m_primroot : (2^m).-primitive_root w).
     case odd eqn:h; rewrite mulnC exprM w_neg1 -signr_odd h //.
   Qed.
 
-  Ltac r := repeat rewrite ?polyCN ?mulrDl ?mulrDr ?mulrN1 ?mulN1r ?mulrNN ?mulrN ?mulNr -?exprD ?opprK ?addrA ?addrK.
+  Lemma kp_msubk : (2 ^ (k - 1) * 2 ^ (m - k) = 2 ^ (m - 1))%N.
+  Proof.
+    rewrite (mulnC (2 ^ (k - 1))%N (2 ^ (m - k))%N).
+    by rewrite -!expnD !addnBA // subnK.
+  Qed.
+
+  Ltac r := repeat rewrite ?polyCN ?mulrDl ?mulrDr ?mulrN1 ?mulN1r ?mulrNN ?mulrN ?mulNr ?mulr1 -?exprD ?opprK ?addrA ?addrK.
   Lemma modulus_split : m1 * m2 = (modulus k l).
   Proof.
     unfold m1, m2, modulus.
@@ -132,22 +138,64 @@ Context (w_2m_primroot : (2^m).-primitive_root w).
 
     assert (
       w ^+ (2 ^ (k - 1)) ^+ (l + 2 ^ (m - k)) =
-      - w ^+ (2 ^ (k - 1)) ^+ l) as ->. admit. (* using w_neg1 *)
+      - w ^+ (2 ^ (k - 1)) ^+ l) as ->. (* using w_neg1 *)
+    rewrite -exprM mulnDr.
+    rewrite kp_msubk.
+    rewrite exprD mulrC w_neg1 mulN1r.
+    by rewrite exprM.
 
     rewrite ?(mulrC _ ('X^_)); r.
     do 2 f_equal.
     by rewrite -polyCM -exprD -!exprM addnn -muln2 mulnA mulnC -def_k expnS mulnA.
-  Admitted.
+  Qed.
 
-  Let a := w ^+ (2 ^ k') ^ l.
-  Let b := w ^+ (2 ^ k') ^ (l + 2 ^ (m - k))%N.
+  Lemma linear_relation (a b : F) (n : nat) : a - b != 0 -> (b - a)^-1 *: ('X^n - a%:P) + (a - b)^-1 *: ('X^n - b%:P) = 1.
+  Proof.
+    intros.
+    have abneq0 : (a - b)%:P != 0 by
+      rewrite polyC_eq0 H.
+    have baneq0 : (b - a)%:P != 0 by
+      rewrite -opprB polyC_eq0; move: H; rewrite -unitfE -unitrN unitfE.
+
+    rewrite -!mul_polyC.
+
+    apply (@mulfI _ (a - b)%:P abneq0).
+    apply (@mulfI _ (b - a)%:P baneq0).
+
+    r; rewrite !mulrA ?(mulrC _ ('X^_)).
+    rewrite -!polyCM.
+    rewrite mulfK.
+
+    rewrite ?(mulrC _ (a - b)).
+    rewrite mulfK.
+
+    rewrite -(opprB a b).
+    rewrite (addrC ('X^n * (a - b)%:P)).
+    r; rewrite -polyCN -polyCD !opprB !addrA.
+
+    rewrite !polyCD.
+
+    rewrite ?(addrC _ ((- (a * a))%:P)) ?(addrC _ ((a * b)%:P)) !addrA ?(addrC _ ((b * a)%:P)) !addrA ?(addrC _ ((- (b * b))%:P)) //.
+
+    by move: H; rewrite -opprB -unitfE -unitrN unitfE.
+    by apply H.
+  Qed.
+
+  Let a := w ^+ (2 ^ k') ^+ l.
+  Let b := w ^+ (2 ^ k') ^+ (l + 2 ^ (m - k))%N.
   Let u := (b - a)^-1.
   Let v := (a - b)^-1. (* v = -u. *)
   Lemma linear_relation_m1_m2 : u%:P * m1 + v%:P * m2 = 1.
   Proof.
-    unfold m1, m2, modulus.
-    fold a.
-    fold b.
+    rewrite !mul_polyC linear_relation //.
+    unfold a, b.
+    rewrite def_k.
+    rewrite -!exprM mulnDr exprD kp_msubk w_neg1 mulrN1 opprK.
+    rewrite -(mulr1 (w ^+ (2 ^ (k - 1) * l))) -mulrDr.
+    apply mulf_neq0.
+    apply expf_neq0.
+    admit.
+    admit.
   Admitted.
 
   Lemma coprime_m1_m2 : coprimep m1 m2.
@@ -160,10 +208,17 @@ Context (w_2m_primroot : (2^m).-primitive_root w).
   (* **************** *)
   Let crt_p := p1 * v%:P * m2 + p2 * u%:P * m1.
 
-  Lemma crt_p_size : (size crt_p < (2 ^ k).+1)%N.
+  Lemma crt_p_size : (size crt_p < (2^k).+1)%N.
   Proof.
+    (* size mi = (2^k').+1 and size pi < size mi. *)
+    have s1: (size (p1 * v%:P * m2)%R < (2^k).+1)%N. admit.
+    have s2: (size (p2 * u%:P * m1)%R < (2^k).+1)%N. admit.
     unfold crt_p.
-    (*apply size_add.*)
+    have: (maxn (size (p1 * v%:P * m2)%R) (size (p2 * u%:P * m1)%R) < (2^k).+1)%N.
+      unfold maxn.
+      case: (size (p1 * v%:P * m2)%R < size (p2 * u%:P * m1)%R)%N => //.
+    specialize (size_add (p1 * v%:P * m2) (p2 * u%:P * m1)).
+    apply leq_ltn_trans.
   Admitted.
 
   Lemma crt_p_modl : crt_p %% m1 = p1 %% m1.
@@ -269,18 +324,12 @@ Context (w_2m_primroot : (2^m).-primitive_root w).
     case odd eqn:h; rewrite !hornerE def_k -!exprM mulnDl -mulnA.
     {
       rewrite mulnDr (mulnC (2 ^ (k - 1))%N l) (mulnC (2 ^ (k - 1))%N (2 ^ (m - k))%N).
-      rewrite -!expnD !addnBA.
-      rewrite !subnK.
+      rewrite -!expnD !addnBA // !subnK //.
       by rewrite !exprD mulrC w_neg1 H addrN.
-      apply k_bounded_m.
-      apply k_positive.
     }
     {
-      rewrite -expnD addnBA.
-      rewrite subnK.
+      rewrite -expnD addnBA // subnK //.
       by rewrite (mulnC (2 ^ (k - 1))%N l) exprD H mul1r addrN.
-      apply k_bounded_m.
-      apply k_positive.
     }
   Qed.
 

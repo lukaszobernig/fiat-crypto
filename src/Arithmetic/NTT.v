@@ -194,13 +194,26 @@ Qed.
   Let u := (b - a)^-1.
   Let v := (a - b)^-1. (* v = -u. *)
 
+  Lemma ab_neq: a - b != 0.
+  Proof.
+    unfold a, b.
+    rewrite def_k -!exprM mulnDr exprD kp_msubk w_neg1 mulrN1 opprK.
+    by rewrite -mulr2n -mulr_natl mulf_neq0 // expf_neq0 // w_neq0.
+  Qed.
+
+  Lemma v_neq0 : v != 0.
+  Proof.
+    by apply invr_neq0, ab_neq.
+  Qed.
+
+  Lemma u_neq0 : u != 0.
+  Proof.
+    by rewrite invr_neq0 // -opprB -unitfE -unitrN unitfE opprK ab_neq.
+  Qed.
+
   Lemma linear_relation_m1_m2 : u%:P * m1 + v%:P * m2 = 1.
   Proof.
-    rewrite !mul_polyC linear_relation //.
-    unfold a, b.
-    rewrite def_k.
-    rewrite -!exprM mulnDr exprD kp_msubk w_neg1 mulrN1 opprK.
-    by rewrite -mulr2n -mulr_natl mulf_neq0 // expf_neq0 // w_neq0.
+    by rewrite !mul_polyC linear_relation // ab_neq.
   Qed.
 
   Lemma coprime_m1_m2 : coprimep m1 m2.
@@ -219,18 +232,54 @@ Qed.
     have spm2: (size p2 < size m2)%N by rewrite ltn_modp modulus_nonzero.
     have sm1: size m1 = (2^k').+1 by apply modulus_size.
     have sm2: size m2 = (2^k').+1 by apply modulus_size.
-    have su: (size u%:P <= 1)%N by rewrite size_polyC; case: (u != 0).
-    have sv: (size v%:P <= 1)%N by rewrite size_polyC; case: (v != 0).
 
+    (* TODO: There is a better way to prove this using the below facts.
+       This also will not require to use the lemmas u_neq0, v_neq0 then.
+    *)
+    (* have su: (size u%:P <= 1)%N by apply size_polyC_leq1.
+       have sv: (size v%:P <= 1)%N by apply size_polyC_leq1.
+    *)
 
     (* size mi = (2^k').+1 and size pi < size mi. *)
-    have s1: (size (p1 * v%:P * m2)%R < (2^k).+1)%N. admit.
-    have s2: (size (p2 * u%:P * m1)%R < (2^k).+1)%N. admit.
+    have s1: (size (p1 * v%:P * m2)%R < (2^k).+1)%N.
+    {
+      rewrite (mulrC _ v%:P) -mulrA mul_polyC.
+      rewrite lreg_size.
+      rewrite (leq_ltn_trans (size_mul_leq _ _)) //.
+
+      rewrite sm2.
+      rewrite -(addn1 (2 ^ k')) -subn1 addnA addnK addnC.
+      rewrite -ltn_subRL -(addn1 (2 ^ k)) addnC.
+      rewrite expnS -{2}(mul1n (2 ^ k')%N) -addnBA.
+      by rewrite -mulnBl subSS subn0 mul1n add1n -sm1.
+      rewrite mul1n -expnS def_k {2}subn1 prednK //.
+      apply leq_pexp2l. trivial. rewrite subn1 leq_pred //.
+
+      apply/lregP/v_neq0.
+    }
+
+    have s2: (size (p2 * u%:P * m1)%R < (2^k).+1)%N.
+    {
+      rewrite (mulrC _ u%:P) -mulrA mul_polyC.
+      rewrite lreg_size.
+      rewrite (leq_ltn_trans (size_mul_leq _ _)) //.
+
+      rewrite sm1.
+      rewrite -(addn1 (2 ^ k')) -subn1 addnA addnK addnC.
+      rewrite -ltn_subRL -(addn1 (2 ^ k)) addnC.
+      rewrite expnS -{2}(mul1n (2 ^ k')%N) -addnBA.
+      by rewrite -mulnBl subSS subn0 mul1n add1n -sm2.
+      rewrite mul1n -expnS def_k {2}subn1 prednK //.
+      apply leq_pexp2l. trivial. rewrite subn1 leq_pred //.
+
+      apply/lregP/u_neq0.
+    }
+
     have: (maxn (size (p1 * v%:P * m2)%R) (size (p2 * u%:P * m1)%R) < (2^k).+1)%N by
       unfold maxn; case: (size (p1 * v%:P * m2)%R < size (p2 * u%:P * m1)%R)%N.
     specialize (size_add (p1 * v%:P * m2) (p2 * u%:P * m1)).
     apply leq_ltn_trans.
-  Admitted.
+  Qed.
 
   Lemma crt_p_modl : crt_p %% m1 = p1 %% m1.
   Proof.

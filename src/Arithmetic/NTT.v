@@ -23,16 +23,15 @@ Qed.
 (* Helper lemma. *)
 Lemma nat_add_lt : forall a b, (a + b < b)%N = false.
 Proof.
-  move=> a b.
-  elim: b => [|b IHb] //.
-  by rewrite addnS /IHb.
+  by move=> a; elim=> [|b] //; rewrite addnS.
 Qed.
 
 (* The modulus we use. *)
 Definition modulus (k l : nat) :=
-  'X^(2^k) - (w ^+ (2^k) ^+ l)%:P.
+  'X^(2 ^ k) - (w ^+ (2 ^ k) ^+ l)%:P.
 
-Lemma modulus_const_bound (k l : nat) : (size (- (w ^+ (2 ^ k) ^+ l)%:P) < size ('X^(2 ^ k) :> {poly F}))%N.
+Lemma modulus_const_bound (k l : nat) :
+  (size (- (w ^+ (2 ^ k) ^+ l)%:P) < size ('X^(2 ^ k) :> {poly F}))%N.
 Proof.
   rewrite size_polyXn size_opp size_polyC.
   case: ((w ^+ (2 ^ k) ^ l)%R != 0) => //=.
@@ -40,11 +39,11 @@ Proof.
 Qed.
 
 (* The degree equals 2^k. *)
-Lemma modulus_size (k l : nat) : size (modulus k l) = (2^k).+1.
+Lemma modulus_size (k l : nat) : size (modulus k l) = (2 ^ k).+1.
 Proof.
   rewrite size_addl.
   by rewrite size_polyXn.
-  by apply modulus_const_bound.
+  by apply: modulus_const_bound.
 Qed.
 
 (* The modulus is a monic polynomial. *)
@@ -53,15 +52,14 @@ Lemma modulus_monic (k l : nat) :
 Proof.
   rewrite monicE lead_coefDl.
   by rewrite lead_coefXn.
-  by apply modulus_const_bound.
+  by apply: modulus_const_bound.
 Qed.
 
 (* Monic implies that the modulus is nonzero. *)
 Lemma modulus_nonzero (k l : nat) :
   modulus k l != 0.
 Proof.
-  specialize (modulus_monic k l).
-  apply monic_neq0.
+  by move: (modulus_monic k l); apply: monic_neq0.
 Qed.
 
 Section WithMAndWPrimRoot.
@@ -72,7 +70,7 @@ Context
 Context (w_2m_primroot : (2^m).-primitive_root w).
 
 Lemma w_eq1 : w ^+ (2 ^ m) = 1.
-  by apply prim_expr_order.
+  by apply: prim_expr_order.
 Qed.
 
 Lemma w_neq0 : w != 0.
@@ -83,14 +81,14 @@ Qed.
 
 Lemma w_neg1 : w ^+ (2 ^ (m - 1)) = -1.
 Proof.
-  by apply prim_exp2nS; rewrite subn1 prednK.
+  by apply: prim_exp2nS; rewrite subn1 prednK.
 Qed.
 
 Lemma w_parity (i : nat) : if odd i then
   w ^+ (i * 2 ^ (m - 1)) = -1 else
   w ^+ (i * 2 ^ (m - 1)) = 1.
 Proof.
-  by case odd eqn:H; rewrite mulnC exprM w_neg1 -signr_odd H.
+  by case H: odd; rewrite mulnC exprM w_neg1 -signr_odd H.
 Qed.
 
   Section InductiveCase.
@@ -115,12 +113,12 @@ Qed.
 
   Context (k_leq_m : (k <= m)%N).
   Context (k_positive : (0 < k)%N).
-  Context (size_p_bounded : (size p < (2^k).+1)%N).
-  Context (idx_bounded : forall i, (rec_idx k' i < 2^k')%N).
-  Context (size_rec_ntt : forall l p, (size (rec_ntt k' l p) = 2^k')%N).
+  Context (size_p_bounded : (size p < (2 ^ k).+1)%N).
+  Context (idx_bounded : forall i, (rec_idx k' i < 2 ^ k')%N).
+  Context (size_rec_ntt : forall l p, (size (rec_ntt k' l p) = 2 ^ k')%N).
   Context (h_rec_ntt :
-    forall i l (p : {poly F}) (e := (i*2^(m - k') + l)%N),
-      (k' <= m)%N -> (size p < (2^k').+1)%N -> p.[w ^+ e] = nth w (rec_ntt k' l p) (rec_idx k' i)
+    forall l i (p : {poly F}) (e := (i * 2 ^ (m - k') + l)%N),
+      (k' <= m)%N -> (size p < (2 ^ k').+1)%N -> p.[w ^+ e] = nth w (rec_ntt k' l p) (rec_idx k' i)
   ).
 
   Lemma def_k : (k' = k - 1)%N.
@@ -141,16 +139,13 @@ Qed.
     unfold m1, m2, modulus.
     rewrite def_k; r.
 
-    assert ((2 ^ (k - 1) + 2 ^ (k - 1) = 2^k)%N) as ->.
-    by rewrite addnn -muln2 mulnC -def_k expnS.
+    have eq1: (2 ^ (k - 1) + 2 ^ (k - 1) = 2^k)%N by
+      rewrite addnn -muln2 mulnC -def_k expnS.
+    rewrite eq1.
 
-    assert (
-      w ^+ (2 ^ (k - 1)) ^+ (l + 2 ^ (m - k)) =
-      - w ^+ (2 ^ (k - 1)) ^+ l) as ->. (* using w_neg1 *)
-    rewrite -exprM mulnDr.
-    rewrite kp_msubk.
-    rewrite exprD mulrC w_neg1 mulN1r.
-    by rewrite exprM.
+    have eq2: w ^+ (2 ^ (k - 1)) ^+ (l + 2 ^ (m - k)) = - w ^+ (2 ^ (k - 1)) ^+ l by
+      rewrite -exprM mulnDr kp_msubk exprD mulrC w_neg1 mulN1r exprM.
+    rewrite eq2.
 
     rewrite ?(mulrC _ ('X^_)); r.
     do 2 f_equal.
@@ -167,8 +162,8 @@ Qed.
 
     rewrite -!mul_polyC.
 
-    apply (@mulfI _ (a - b)%:P abneq0).
-    apply (@mulfI _ (b - a)%:P baneq0).
+    apply: (@mulfI _ (a - b)%:P abneq0).
+    apply: (@mulfI _ (b - a)%:P baneq0).
 
     r; rewrite !mulrA ?(mulrC _ ('X^_)).
     rewrite -!polyCM.
@@ -186,7 +181,7 @@ Qed.
     rewrite ?(addrC _ ((- (a * a))%:P)) ?(addrC _ ((a * b)%:P)) !addrA ?(addrC _ ((b * a)%:P)) !addrA ?(addrC _ ((- (b * b))%:P)) //.
 
     by move: H; rewrite -opprB -unitfE -unitrN unitfE.
-    by apply H.
+    by apply: H.
   Qed.
 
   Let a := w ^+ (2 ^ k') ^+ l.
@@ -203,7 +198,7 @@ Qed.
 
   Lemma v_neq0 : v != 0.
   Proof.
-    by apply invr_neq0, ab_neq.
+    by apply: invr_neq0 ab_neq.
   Qed.
 
   Lemma u_neq0 : u != 0.
@@ -220,7 +215,7 @@ Qed.
   Proof.
     apply/(Bezout_eq1_coprimepP m1 m2).
     exists (u%:P, v%:P).
-    apply linear_relation_m1_m2.
+    apply: linear_relation_m1_m2.
   Qed.
 
   (* **************** *)
@@ -230,14 +225,14 @@ Qed.
   Proof.
     have spm1: (size p1 < size m1)%N by rewrite ltn_modp modulus_nonzero.
     have spm2: (size p2 < size m2)%N by rewrite ltn_modp modulus_nonzero.
-    have sm1: size m1 = (2^k').+1 by apply modulus_size.
-    have sm2: size m2 = (2^k').+1 by apply modulus_size.
+    have sm1: size m1 = (2^k').+1 by apply: modulus_size.
+    have sm2: size m2 = (2^k').+1 by apply: modulus_size.
 
     (* TODO: There is a better way to prove this using the below facts.
        This also will not require to use the lemmas u_neq0, v_neq0 then.
     *)
-    (* have su: (size u%:P <= 1)%N by apply size_polyC_leq1.
-       have sv: (size v%:P <= 1)%N by apply size_polyC_leq1.
+    (* have su: (size u%:P <= 1)%N by apply: size_polyC_leq1.
+       have sv: (size v%:P <= 1)%N by apply: size_polyC_leq1.
     *)
 
     (* size mi = (2^k').+1 and size pi < size mi. *)
@@ -253,7 +248,7 @@ Qed.
       rewrite expnS -{2}(mul1n (2 ^ k')%N) -addnBA.
       by rewrite -mulnBl subSS subn0 mul1n add1n -sm1.
       rewrite mul1n -expnS def_k {2}subn1 prednK //.
-      apply leq_pexp2l. trivial. rewrite subn1 leq_pred //.
+      apply: leq_pexp2l. trivial. rewrite subn1 leq_pred //.
 
       apply/lregP/v_neq0.
     }
@@ -270,15 +265,14 @@ Qed.
       rewrite expnS -{2}(mul1n (2 ^ k')%N) -addnBA.
       by rewrite -mulnBl subSS subn0 mul1n add1n -sm2.
       rewrite mul1n -expnS def_k {2}subn1 prednK //.
-      apply leq_pexp2l. trivial. rewrite subn1 leq_pred //.
+      apply: leq_pexp2l. trivial. rewrite subn1 leq_pred //.
 
       apply/lregP/u_neq0.
     }
 
     have: (maxn (size (p1 * v%:P * m2)%R) (size (p2 * u%:P * m1)%R) < (2^k).+1)%N by
       unfold maxn; case: (size (p1 * v%:P * m2)%R < size (p2 * u%:P * m1)%R)%N.
-    specialize (size_add (p1 * v%:P * m2) (p2 * u%:P * m1)).
-    apply leq_ltn_trans.
+    by move: (size_add (p1 * v%:P * m2) (p2 * u%:P * m1)); apply: leq_ltn_trans.
   Qed.
 
   Lemma crt_p_modl : crt_p %% m1 = p1 %% m1.
@@ -313,39 +307,30 @@ Qed.
 
   Lemma p_decomp : p = p1 * v%:P * m2 + p2 * u%:P * m1.
   Proof.
-    specialize crt_p_mod.
-    rewrite modulus_split.
-    rewrite modp_small.
-    rewrite modp_small.
-    move/eqP=> H.
-    by apply H.
+    move: crt_p_mod.
+    rewrite modulus_split !modp_small.
+    by apply/eqP.
     rewrite modulus_size.
-    by apply crt_p_size.
+    by apply: crt_p_size.
     by rewrite modulus_size.
   Qed.
 
   Lemma p_decomp_m1 : p = p1 + (p2 - p1) * u%:P * m1.
   Proof.
-    have eq : v%:P * m2 = 1 - u%:P * m1 by
-      apply (@addIr _ (u%:P * m1));
+    have eq: v%:P * m2 = 1 - u%:P * m1 by
+      apply: (@addIr _ (u%:P * m1));
       rewrite subrK addrC linear_relation_m1_m2.
-    specialize p_decomp.
-    rewrite -(mulrA p1) eq (mulrDr p1) mulr1 -(mulrA p2).
-    move=> H.
     rewrite -mulrA mulrDl -mulrN1 -(mulrA p1) mulN1r addrC -addrA -(addrC p1) addrC.
-    by apply H.
+    by move: p_decomp; rewrite -(mulrA p1) eq (mulrDr p1) mulr1 -(mulrA p2).
   Qed.
 
   Lemma p_decomp_m2 : p = p2 + (p1 - p2) * v%:P * m2.
   Proof.
-    have eq : u%:P * m1 = 1 - v%:P * m2 by
-      apply (@addIr _ (v%:P * m2));
+    have eq: u%:P * m1 = 1 - v%:P * m2 by
+      apply: (@addIr _ (v%:P * m2));
       rewrite subrK linear_relation_m1_m2.
-    specialize p_decomp.
-    rewrite -(mulrA p2) eq (mulrDr p2) mulr1 -(mulrA p1).
-    move=> H.
     rewrite -mulrA mulrDl -mulrN1 -(mulrA p2) mulN1r addrC -addrA -(addrC p2).
-    by apply H.
+    by move: p_decomp; rewrite -(mulrA p2) eq (mulrDr p2) mulr1 -(mulrA p1).
   Qed.
 
   (* **************** *)
@@ -364,7 +349,7 @@ Qed.
     unfold pchinese.
     move/eqP=> H.
     exists (egcdpf m1 m2).1, (egcdpf m1 m2).2.
-    apply H.
+    apply: H.
     rewrite modulus_size.
     unfold pchinese.
     fold p1 p2.
@@ -379,8 +364,7 @@ Qed.
   Let e := (i*2^(m - k) + l)%N.
   Lemma zero_even_odd : if odd i then m2.[w ^+ e] = 0 else m1.[w ^+ e] = 0.
   Proof.
-    pose proof (w_parity i) as wp.
-    case odd eqn:?; rewrite !hornerE def_k -!exprM mulnDl -mulnA.
+    move: (w_parity i); case: odd => wp; rewrite !hornerE def_k -!exprM mulnDl -mulnA.
     {
       rewrite mulnDr (mulnC (2 ^ (k - 1))%N l) (mulnC (2 ^ (k - 1))%N (2 ^ (m - k))%N).
       rewrite -!expnD !addnBA // !subnK //.
@@ -395,16 +379,16 @@ Qed.
   Lemma p_eval_w_p1_p2 :
     p.[w ^+ e] = if odd i then p2.[w ^+ e] else p1.[w ^+ e].
   Proof.
-    pose proof zero_even_odd as mi_eval_0.
-    case odd eqn:h;
+    move: zero_even_odd.
+    by case: odd => mi_eval_0;
       [rewrite p_decomp_m2 | rewrite p_decomp_m1];
-      by rewrite hornerD !hornerM mi_eval_0 mulr0 addr0.
+      rewrite hornerD !hornerM mi_eval_0 mulr0 addr0.
   Qed.
 
-  Lemma size_p_mod_modulus : forall k l, (size (modp p (modulus k l)) < (2^k).+1)%N.
+  Lemma size_p_mod_modulus : forall k l, (size (p %% (modulus k l))%R < (2 ^ k).+1)%N.
   Proof.
     move=> r s.
-    have: (size (modp p (modulus r s)) < (size (modulus r s)))%N by
+    have: (size (p %% (modulus r s))%R < (size (modulus r s)))%N by
       rewrite ltn_modp modulus_nonzero.
     by rewrite modulus_size.
   Qed.
@@ -413,19 +397,19 @@ Qed.
   Proof.
     rewrite def_k subn1.
     move: k_leq_m.
-    have: (k.-1 <= k)%N by apply leq_pred.
-    apply leq_trans.
+    have: (k.-1 <= k)%N by apply: leq_pred.
+    apply: leq_trans.
   Qed.
 
-  Lemma id_even : odd i = false -> (i * 2 ^ (m - k))%N =
+  Lemma id_even : ~~ odd i -> (i * 2 ^ (m - k))%N =
     (i./2 * 2 ^ (m - k'))%N.
   Proof.
-    move=> H.
+    move => H.
     rewrite def_k (subnCBA _ k_positive) -(addnBA _ k_leq_m).
-    by rewrite add1n expnS mulnA muln2 even_halfK // H.
+    by rewrite add1n expnS mulnA muln2 even_halfK.
   Qed.
 
-  Lemma id_odd : odd i = true -> (i * 2 ^ (m - k) + l)%N =
+  Lemma id_odd : odd i -> (i * 2 ^ (m - k) + l)%N =
     (i./2 * 2 ^ (m - k') + (l + 2 ^ (m - k)))%N.
   Proof.
     move=> H.
@@ -437,7 +421,7 @@ Qed.
     rewrite -addnBA.
     by rewrite subnn addn0.
     trivial.
-    case i eqn:h.
+    case i eqn:?.
     by []. (* Contradiction with i being odd. *)
     by rewrite -(addn1 n) mulnDl mul1n leq_addl.
   Qed.
@@ -448,24 +432,24 @@ Qed.
     rewrite p_eval_w_p1_p2.
     unfold ntt_body', idx_body', idx'.
     rewrite nth_cat.
-    case odd eqn:?; rewrite size_rec_ntt.
+    case Hodd: odd; rewrite size_rec_ntt.
     {
       rewrite addnK.
-      case (_ < 2 ^ k')%N eqn:hh.
-      by rewrite nat_add_lt in hh.
+      case Hidx: (_ < 2 ^ k')%N.
+      by move: Hidx; rewrite nat_add_lt.
       unfold rhs, e.
       rewrite -(h_rec_ntt _ _ kp_bounded_m).
       do 2 f_equal.
-      rewrite id_odd //.
-      apply size_p_mod_modulus.
+      by rewrite id_odd //.
+      by apply: size_p_mod_modulus.
     }
     {
       rewrite idx_bounded.
       unfold lhs, e.
       rewrite -(h_rec_ntt _ _ kp_bounded_m).
       do 2 f_equal.
-      rewrite id_even //.
-      apply size_p_mod_modulus.
+      by rewrite id_even //; apply/negPf.
+      by apply: size_p_mod_modulus.
     }
   Qed.
 
@@ -488,35 +472,35 @@ Fixpoint ntt k l p := ntt_body ntt k l p.
 Fixpoint idx k i := idx_body idx k i.
 
 Lemma size_ntt :
-  forall k l (p : {poly F}), (size (ntt k l p) = 2^k)%N.
+  forall k l p, (size (ntt k l p) = 2 ^ k)%N.
 Proof.
-  induction k; cbn [ntt ntt_body]; intros; trivial.
+  elim=> [|k IHk] // l p.
   by rewrite size_cat !IHk addnn -(addn1 k) expnD expn1 muln2.
 Qed.
 
 Lemma idx_bounded :
   forall k i, (idx k i < 2^k)%N.
 Proof.
-  induction k; cbn [idx idx_body]; intros; trivial.
-  unfold idx_body'.
-  by case odd eqn:?;
+  elim=> [|k IHk] // i.
+  cbn [idx idx_body]; unfold idx_body'.
+  by case: odd;
     rewrite -(addn1 k) expnD expn1 muln2 -addnn;
     [rewrite ltn_add2r | rewrite ltn_addr].
 Qed.
 
 Lemma ntt_correct :
-  (2 != 0 :> F) -> forall k i l (p : {poly F}), (k <= m)%N -> (size p < (2^k).+1)%N ->
+  (2 != 0 :> F) -> forall k l i (p : {poly F}), (k <= m)%N -> (size p < (2^k).+1)%N ->
   p.[w ^+ (i*2^(m - k) + l)] = nth w (ntt k l p) (idx k i).
 Proof.
   move=> char_F_neq2.
-  induction k; cbn [ntt idx ntt_body idx_body]; intros.
+  induction k; cbn[ntt idx ntt_body idx_body]; move=> l i p k_leq_m size_p_bounded.
   rewrite nth0 /head subn0 horner_coef.
-  case size_p : size H0 => [|[]] // _.
+  case size_p: size size_p_bounded => [|[]] // _.
   by rewrite big_ord0 -[p]coefK size_p poly_def big_ord0 coefC.
   by rewrite big_ord1 expr0 mulr1.
   rewrite -p_eval_w_ntt //.
-  apply idx_bounded.
-  apply size_ntt.
+  apply: idx_bounded.
+  apply: size_ntt.
 Qed.
 
 End WithMAndWPrimRoot.

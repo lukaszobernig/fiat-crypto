@@ -21,9 +21,9 @@ Proof.
 Qed.
 
 (* Helper lemma. *)
-Lemma nat_add_lt : forall a b, (a + b < b)%N = false.
+Lemma nat_add_lt (a b : nat) : (a + b < b)%N = false.
 Proof.
-  by move=> a; elim=> [|b] //; rewrite addnS.
+  by elim: b => [|b] //; rewrite addnS.
 Qed.
 
 (* The modulus we use. *)
@@ -109,7 +109,7 @@ Qed.
   Definition ntt_body' := lhs ++ rhs.
   Let idx' := rec_idx k' i./2.
   Definition idx_body' :=
-    if odd i then (idx' + 2^k')%N else idx'.
+    if odd i then (idx' + 2 ^ k')%N else idx'.
 
   Context (k_leq_m : (k <= m)%N).
   Context (k_positive : (0 < k)%N).
@@ -162,8 +162,8 @@ Qed.
 
     rewrite -!mul_polyC.
 
-    apply: (@mulfI _ (a - b)%:P abneq0).
-    apply: (@mulfI _ (b - a)%:P baneq0).
+    apply: (mulfI abneq0).
+    apply: (mulfI baneq0).
 
     r; rewrite !mulrA ?(mulrC _ ('X^_)).
     rewrite -!polyCM.
@@ -215,7 +215,7 @@ Qed.
   Proof.
     apply/(Bezout_eq1_coprimepP m1 m2).
     exists (u%:P, v%:P).
-    apply: linear_relation_m1_m2.
+    by apply: linear_relation_m1_m2.
   Qed.
 
   (* **************** *)
@@ -318,7 +318,7 @@ Qed.
   Lemma p_decomp_m1 : p = p1 + (p2 - p1) * u%:P * m1.
   Proof.
     have eq: v%:P * m2 = 1 - u%:P * m1 by
-      apply: (@addIr _ (u%:P * m1));
+      apply: (addIr (u%:P * m1));
       rewrite subrK addrC linear_relation_m1_m2.
     rewrite -mulrA mulrDl -mulrN1 -(mulrA p1) mulN1r addrC -addrA -(addrC p1) addrC.
     by move: p_decomp; rewrite -(mulrA p1) eq (mulrDr p1) mulr1 -(mulrA p2).
@@ -327,7 +327,7 @@ Qed.
   Lemma p_decomp_m2 : p = p2 + (p1 - p2) * v%:P * m2.
   Proof.
     have eq: u%:P * m1 = 1 - v%:P * m2 by
-      apply: (@addIr _ (v%:P * m2));
+      apply: (addIr (v%:P * m2));
       rewrite subrK linear_relation_m1_m2.
     rewrite -mulrA mulrDl -mulrN1 -(mulrA p2) mulN1r addrC -addrA -(addrC p2).
     by move: p_decomp; rewrite -(mulrA p2) eq (mulrDr p2) mulr1 -(mulrA p1).
@@ -385,9 +385,8 @@ Qed.
       rewrite hornerD !hornerM mi_eval_0 mulr0 addr0.
   Qed.
 
-  Lemma size_p_mod_modulus : forall k l, (size (p %% (modulus k l))%R < (2 ^ k).+1)%N.
+  Lemma size_p_mod_modulus (r s : nat) : (size (p %% (modulus r s))%R < (2 ^ r).+1)%N.
   Proof.
-    move=> r s.
     have: (size (p %% (modulus r s))%R < (size (modulus r s)))%N by
       rewrite ltn_modp modulus_nonzero.
     by rewrite modulus_size.
@@ -398,7 +397,7 @@ Qed.
     rewrite def_k subn1.
     move: k_leq_m.
     have: (k.-1 <= k)%N by apply: leq_pred.
-    apply: leq_trans.
+    by apply: leq_trans.
   Qed.
 
   Lemma id_even : ~~ odd i -> (i * 2 ^ (m - k))%N =
@@ -471,17 +470,15 @@ Fixpoint ntt k l p := ntt_body ntt k l p.
 
 Fixpoint idx k i := idx_body idx k i.
 
-Lemma size_ntt :
-  forall k l p, (size (ntt k l p) = 2 ^ k)%N.
+Lemma size_ntt k l p : (size (ntt k l p) = 2 ^ k)%N.
 Proof.
-  elim=> [|k IHk] // l p.
+  elim: k l p => [|k IHk] // l p.
   by rewrite size_cat !IHk addnn -(addn1 k) expnD expn1 muln2.
 Qed.
 
-Lemma idx_bounded :
-  forall k i, (idx k i < 2^k)%N.
+Lemma idx_bounded k i : (idx k i < 2^k)%N.
 Proof.
-  elim=> [|k IHk] // i.
+  elim: k i => [|k IHk] // i.
   cbn [idx idx_body]; unfold idx_body'.
   by case: odd;
     rewrite -(addn1 k) expnD expn1 muln2 -addnn;
@@ -493,14 +490,14 @@ Lemma ntt_correct :
   p.[w ^+ (i*2^(m - k) + l)] = nth w (ntt k l p) (idx k i).
 Proof.
   move=> char_F_neq2.
-  induction k; cbn[ntt idx ntt_body idx_body]; move=> l i p k_leq_m size_p_bounded.
+  elim=> [|k IHk] // l i p k_leq_m size_p_bounded; cbn[ntt idx ntt_body idx_body].
   rewrite nth0 /head subn0 horner_coef.
   case size_p: size size_p_bounded => [|[]] // _.
   by rewrite big_ord0 -[p]coefK size_p poly_def big_ord0 coefC.
   by rewrite big_ord1 expr0 mulr1.
   rewrite -p_eval_w_ntt //.
-  apply: idx_bounded.
-  apply: size_ntt.
+  by apply: idx_bounded.
+  by apply: size_ntt.
 Qed.
 
 End WithMAndWPrimRoot.

@@ -1,5 +1,5 @@
 (* Rewritten versions of poly1305 and chacha20 that you can compile with Rupicola *)
-Require Import Coq.Unicode.Utf8.
+From Coq Require Import Utf8.
 Require Import Rupicola.Lib.Api.
 Require Import Rupicola.Lib.Loops.
 (*TODO: move this file to Rupicola.Lib*)
@@ -168,7 +168,7 @@ Lemma array_dexpr_locals_put
     map.get l x = None → Forall2 (DEXPR m l) exp w → Forall2 (DEXPR m #{ … l; x => v }#) exp w.
 Proof.
   induction 2; constructor;
-    eauto using dexpr_locals_put.
+    solve [eauto|epose dexpr_locals_put; eauto].
 Qed.
 
 (* we leave prior valiues abstract to support compound operations *)

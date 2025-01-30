@@ -73,9 +73,9 @@ BEDROCK2_FILES_PATTERN := \
 	src/ExtractionJsOfOCaml/bedrock2_% \
 	src/ExtractionOCaml/bedrock2_% \
 	src/ExtractionHaskell/bedrock2_% \
-	src/ExtractionJsOfOCaml/with_bedrock2_% \
-	src/ExtractionOCaml/with_bedrock2_% \
-	src/ExtractionHaskell/with_bedrock2_% \
+	src/ExtractionJsOfOCaml/WithBedrock/% \
+	src/ExtractionOCaml/WithBedrock/% \
+	src/ExtractionHaskell/WithBedrock/% \
 	src/Assembly/WithBedrock/% \
 	src/Bedrock/% # it's important to catch not just the .vo files, but also the .glob files, etc, because this is used to filter FILESTOINSTALL
 EXCLUDE_PATTERN :=
@@ -87,8 +87,15 @@ endif
 EXCLUDED_VOFILES := $(filter $(EXCLUDE_PATTERN),$(VOFILES))
 # add files to this list to prevent them from being built as final
 # targets by the "lite" target
-LITE_UNMADE_VOFILES := src/Curves/Weierstrass/AffineProofs.vo \
-	src/Curves/Weierstrass/Jacobian.vo \
+LITE_UNMADE_VOFILES := \
+	src/Bedrock/Secp256k1/Addchain.vo \
+	src/Bedrock/Secp256k1/Field256k1.vo \
+	src/Bedrock/Secp256k1/JacobianCoZ.vo \
+	src/Bedrock/Secp256k1/JoyeLadder.vo \
+	src/Curves/Weierstrass/AffineProofs.vo \
+	src/Curves/Weierstrass/Jacobian/Jacobian.vo \
+	src/Curves/Weierstrass/Jacobian/CoZ.vo \
+	src/Curves/Weierstrass/Jacobian/ScalarMult.vo \
 	src/Curves/Weierstrass/Projective.vo \
 	src/Rewriter/RulesGood.vo \
 	src/Rewriter/All.vo \
@@ -96,7 +103,9 @@ LITE_UNMADE_VOFILES := src/Curves/Weierstrass/AffineProofs.vo \
 	$(EXCLUDED_VO)
 NOBIGMEM_UNMADE_VOFILES := \
 	src/Curves/Weierstrass/AffineProofs.vo \
-	src/Curves/Weierstrass/Jacobian.vo \
+	src/Curves/Weierstrass/Jacobian/Jacobian.vo \
+	src/Curves/Weierstrass/Jacobian/CoZ.vo \
+	src/Curves/Weierstrass/Jacobian/ScalarMult.vo \
 	src/Curves/Weierstrass/Projective.vo \
 	$(PERFTESTING_VO) \
 	$(EXCLUDED_VO)
@@ -494,8 +503,8 @@ install-without-bedrock2: coq-without-bedrock2 $(filter %.vo,$(filter-out $(BEDR
 install-without-bedrock2:
 	$(HIDE)$(MAKE) -f Makefile.coq install FILESTOINSTALL="$(filter-out $(BEDROCK2_FILES_PATTERN),$(FILESTOINSTALL))"
 
-install-standalone-ocaml: standalone-ocaml
-install-standalone-haskell: standalone-haskell
+install-standalone-ocaml:: standalone-ocaml
+install-standalone-haskell:: standalone-haskell
 
 .PHONY: validate
 validate: Makefile.coq

@@ -9,6 +9,7 @@ Building
 [![CI (Coq, Arch Linux)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-archlinux.yml/badge.svg?branch=master)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-archlinux.yml?query=branch%3Amaster)
 [![CI (Coq, Windows)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-windows.yml/badge.svg?branch=master)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-windows.yml?query=branch%3Amaster)
 [![CI (Coq, MacOS)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-macos.yml/badge.svg?branch=master)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-macos.yml?query=branch%3Amaster)
+[![CI (opam)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-opam-package.yml/badge.svg?branch=master)](https://github.com/mit-plv/fiat-crypto/actions/workflows/coq-opam-package.yml?query=branch%3Amaster)
 
 [![Release][release-shield]][release-link]
 [![Zulip][zulip-shield]][zulip-link]
@@ -44,6 +45,7 @@ Package Manager | Command Line Invocation |
 Aptitude (Ubuntu / Debian) | `apt install coq ocaml-findlib libcoq-ocaml-dev jq` |
 Homebrew (OS X) | `brew install coq ocaml-findlib coreutils jq` |
 Pacman (Archlinux) | `pacman -S coq ocaml-findlib ocaml-zarith jq` |
+APK (Alpine) | `apk add --repository=https://dl-cdn.alpinelinux.org/alpine/edge/testing ocaml ocaml-findlib coq ocaml-zarith jq make` |
 
 You can clone this repository with
 

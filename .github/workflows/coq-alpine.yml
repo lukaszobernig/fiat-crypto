@@ -42,12 +42,12 @@ jobs:
     - name: chroot build params
       shell: alpine.sh {0}
       run: etc/ci/describe-system-config.sh
-    - name: make deps
+    - name: etc/ci/github-actions-make.sh deps
       shell: alpine.sh {0}
-      run: make TIMED=1 TIMING=1 -j2 deps
+      run: etc/ci/github-actions-make.sh -j2 deps
     - name: all-except-generated-and-js-of-ocaml
       shell: alpine.sh {0}
-      run: make TIMED=1 TIMING=1 -j2 CAMLEXTRAFLAGS="-ccopt -static" all-except-generated-and-js-of-ocaml
+      run: etc/ci/github-actions-make.sh -j2 CAMLEXTRAFLAGS="-ccopt -static" all-except-generated-and-js-of-ocaml
     - name: install-standalone-unified-ocaml
       shell: alpine.sh {0}
       run: make install-standalone-unified-ocaml BINDIR=dist
@@ -55,50 +55,50 @@ jobs:
 #      shell: alpine.sh {0}
 #      run: make install-standalone-js-of-ocaml
     - name: upload standalone files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: standalone-${{ matrix.alpine }}
         path: dist/fiat_crypto
 #    - name: upload standalone js files
-#      uses: actions/upload-artifact@v3
+#      uses: actions/upload-artifact@v4
 #      with:
 #        name: standalone-html-${{ matrix.alpine }}
 #        path: fiat-html
     - name: upload OCaml files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ExtractionOCaml-${{ matrix.alpine }}
         path: src/ExtractionOCaml
       if: always ()
 #    - name: upload js_of_ocaml files
-#      uses: actions/upload-artifact@v3
+#      uses: actions/upload-artifact@v4
 #      with:
 #        name: ExtractionJsOfOCaml-${{ matrix.alpine }}
 #        path: src/ExtractionJsOfOCaml
 #      if: always ()
     - name: generated-files
       shell: alpine.sh {0}
-      run: make TIMED=1 TIMING=1 -j2 generated-files
+      run: etc/ci/github-actions-make.sh -j2 generated-files
     - run: tar -czvf generated-files.tgz fiat-*/
       if: ${{ failure() }}
     - name: upload generated files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: generated-files-${{ matrix.alpine }}
         path: generated-files.tgz
       if: ${{ failure() }}
     - name: standalone-haskell
       shell: alpine.sh {0}
-      run: make TIMED=1 TIMING=1 -j1 standalone-haskell GHCFLAGS='+RTS -M7G -RTS'
+      run: etc/ci/github-actions-make.sh -j1 standalone-haskell GHCFLAGS='+RTS -M7G -RTS'
     - name: upload Haskell files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ExtractionHaskell-${{ matrix.alpine }}
         path: src/ExtractionHaskell
       if: always ()
     - name: only-test-amd64-files-lite
       shell: alpine.sh {0}
-      run: make TIMED=1 TIMING=1 -j2 only-test-amd64-files-lite SLOWEST_FIRST=1
+      run: etc/ci/github-actions-make.sh -j2 only-test-amd64-files-lite SLOWEST_FIRST=1
     - name: install
       shell: alpine.sh {0}
       run: sudo make EXTERNAL_DEPENDENCIES=1 SKIP_COQSCRIPTS_INCLUDE=1 install install-standalone-ocaml
@@ -126,7 +126,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Download standalone ${{ matrix.alpine }}
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: standalone-${{ matrix.alpine }}
         path: dist/
@@ -161,7 +161,7 @@ jobs:
         fetch-depth: 0 # Fetch all history for all tags and branches
         tags: true     # Fetch all tags as well, `fetch-depth: 0` might be sufficient depending on Git version
     - name: Download standalone edge
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: standalone-edge
         path: dist/

@@ -1,5 +1,5 @@
-Require Import Coq.Classes.Morphisms.
-Require Import Coq.Relations.Relation_Definitions.
+From Coq Require Import Morphisms.
+From Coq Require Import Relation_Definitions.
 Require Import Crypto.Util.Tactics.BreakMatch.
 Require Import Crypto.Util.Tactics.DestructHead.
 Require Import Crypto.Util.Notations.
@@ -323,7 +323,7 @@ Definition is_Some {A} (x : option A) : bool
 Lemma is_None_eq_None_iff {A x} : @is_None A x = true <-> x = None.
 Proof. destruct x; cbv; split; congruence. Qed.
 
-Definition invert_Some {A} (x : option A) : match x with
+Definition invert_Some {A : Type} (x : option A) : match x with
                                             | Some _ => A
                                             | None => unit
                                             end

@@ -24,6 +24,9 @@ jobs:
     env: ${{ matrix.env }}
     name: docker-${{ matrix.env.COQ_VERSION }}
 
+    outputs:
+      coq_image_name: ${{ steps.set-output-step.outputs.coq_image_name }}
+
     concurrency:
       group: ${{ github.workflow }}-${{ matrix.env.COQ_VERSION }}-${{ github.head_ref || github.run_id }}
       cancel-in-progress: true
@@ -39,7 +42,7 @@ jobs:
       with:
         coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
         ocaml_version: ${{ matrix.env.DOCKER_OCAML_VERSION }}
-        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS
+        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS GITHUB_STEP_SUMMARY
         custom_script: |
           eval $(opam env)
           etc/ci/describe-system-config.sh
@@ -48,36 +51,36 @@ jobs:
       with:
         coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
         ocaml_version: ${{ matrix.env.DOCKER_OCAML_VERSION }}
-        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS
+        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS GITHUB_STEP_SUMMARY
         custom_script: etc/ci/github-actions-docker-make.sh COQBIN="$(dirname "$(which coqc)")/" -j2 deps
     - name: all-except-generated-and-js-of-ocaml
       uses: coq-community/docker-coq-action@v1
       with:
         coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
         ocaml_version: ${{ matrix.env.DOCKER_OCAML_VERSION }}
-        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS
+        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS GITHUB_STEP_SUMMARY
         custom_script: etc/ci/github-actions-docker-make.sh ${EXTRA_GH_REPORTIFY} -j2 all-except-generated-and-js-of-ocaml
     - name: pre-standalone-extracted
       uses: coq-community/docker-coq-action@v1
       with:
         coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
         ocaml_version: ${{ matrix.env.DOCKER_OCAML_VERSION }}
-        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS
+        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS GITHUB_STEP_SUMMARY
         custom_script: etc/ci/github-actions-docker-make.sh ${EXTRA_GH_REPORTIFY} -j2 pre-standalone-extracted
     - name: upload OCaml files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ExtractionOCaml-${{ matrix.env.COQ_VERSION }}
         path: src/ExtractionOCaml
       if: always ()
     - name: upload js_of_ocaml source files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ExtractionJsOfOCaml-source-${{ matrix.env.COQ_VERSION }}
         path: src/ExtractionJsOfOCaml
       if: always ()
     - name: upload Haskell source files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ExtractionHaskell-source-${{ matrix.env.COQ_VERSION }}
         path: src/ExtractionHaskell
@@ -85,13 +88,13 @@ jobs:
     - name: install-standalone-unified-ocaml
       run: make -f Makefile.standalone install-standalone-unified-ocaml BINDIR=dist
     - name: upload standalone files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: standalone-docker-coq-${{ matrix.env.DOCKER_COQ_VERSION }}
         path: dist/fiat_crypto
     - run: git config --file .gitmodules --get-regexp path | awk '{ print $2 }' | xargs tar -czvf fiat-crypto-build.tar.gz src
     - name: Upload built files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: build-outputs-docker-coq-${{ matrix.env.DOCKER_COQ_VERSION }}-ocaml-${{ matrix.env.DOCKER_OCAML_VERSION }}
         path: fiat-crypto-build.tar.gz
@@ -100,7 +103,7 @@ jobs:
       with:
         coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
         ocaml_version: ${{ matrix.env.DOCKER_OCAML_VERSION }}
-        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS
+        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS GITHUB_STEP_SUMMARY
         custom_script: |
           sudo git config --global --add safe.directory "*"
           sudo make EXTERNAL_DEPENDENCIES=1 SKIP_COQSCRIPTS_INCLUDE=1 COQBIN="$(dirname "$(which coqc)")/" install install-standalone-ocaml
@@ -109,7 +112,7 @@ jobs:
       with:
         coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
         ocaml_version: ${{ matrix.env.DOCKER_OCAML_VERSION }}
-        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS
+        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS GITHUB_STEP_SUMMARY
         custom_script: |
           sudo git config --global --add safe.directory "*"
           sudo make EXTERNAL_DEPENDENCIES=1 SKIP_BEDROCK2=1 COQBIN="$(dirname "$(which coqc)")/" install-without-bedrock2 install-standalone-ocaml
@@ -118,10 +121,27 @@ jobs:
       with:
         coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
         ocaml_version: ${{ matrix.env.DOCKER_OCAML_VERSION }}
-        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS
+        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS GITHUB_STEP_SUMMARY
         custom_script: |
           sudo git config --global --add safe.directory "*"
           sudo make EXTERNAL_REWRITER=1 EXTERNAL_COQPRIME=1 COQBIN="$(dirname "$(which coqc)")/" install install-standalone-ocaml
+    - name: Save COQ_IMAGE
+      uses: coq-community/docker-coq-action@v1
+      with:
+        coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
+        ocaml_version: ${{ matrix.env.DOCKER_OCAML_VERSION }}
+        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS GITHUB_STEP_SUMMARY COQ_IMAGE GITHUB_ENV
+        custom_script: |
+          echo "COQ_IMAGE=${COQ_IMAGE}" | tee -a $GITHUB_ENV
+    - run: docker save "$COQ_IMAGE" -o image.tar
+    - name: Set coq_image_name Output to ${{ runner.os }}-docker-${{ hashFiles('image.tar') }}
+      id: set-output-step
+      run: echo "coq_image_name=${{ runner.os }}-docker-${{ hashFiles('image.tar') }}" >> $GITHUB_OUTPUT
+    - name: Cache Docker image
+      uses: actions/cache@v4
+      with:
+        path: image.tar
+        key: ${{ runner.os }}-docker-${{ hashFiles('image.tar') }}
     - name: display timing info
       run: cat time-of-build-pretty.log
     - name: display per-line timing info
@@ -149,8 +169,15 @@ jobs:
     - uses: actions/checkout@v4
       with:
         submodules: recursive
+    - name: Restore cached Docker image ${{ needs.build.outputs.coq_image_name }}
+      uses: actions/cache@v4
+      with:
+        path: image.tar
+        key: ${{ needs.build.outputs.coq_image_name }}
+    - name: Load Docker image
+      run: docker load -i image.tar
     - name: Download a Build Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: build-outputs-docker-coq-${{ matrix.env.DOCKER_COQ_VERSION }}-ocaml-${{ matrix.env.DOCKER_OCAML_VERSION }}
         path: .
@@ -161,7 +188,7 @@ jobs:
       with:
         coq_version: ${{ matrix.env.DOCKER_COQ_VERSION }}
         ocaml_version: ${{ matrix.env.DOCKER_OCAML_VERSION }}
-        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS
+        export: CI ALLOW_DIFF COQCHKEXTRAFLAGS GITHUB_STEP_SUMMARY
         custom_script: etc/ci/github-actions-docker-make.sh TIMED=1 validate COQCHKFLAGS="-o ${COQCHKEXTRAFLAGS}"
       if: env.SKIP_VALIDATE == '' && github.event_name != 'pull_request'
 
@@ -181,7 +208,7 @@ jobs:
       with:
         submodules: recursive
     - name: Set up OCaml
-      uses: ocaml/setup-ocaml@v2
+      uses: ocaml/setup-ocaml@v3
       with:
         ocaml-compiler: ${{ matrix.ocaml-compiler }}
     - name: opam install deps
@@ -192,7 +219,7 @@ jobs:
     - name: echo build params
       run: etc/ci/describe-system-config.sh
     - name: Download a Build Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ExtractionJsOfOCaml-source-${{ matrix.coq-version }}
         path: src/ExtractionJsOfOCaml
@@ -203,13 +230,13 @@ jobs:
     - name: install-standalone-js-of-ocaml
       run: make -f Makefile.standalone install-standalone-js-of-ocaml
     - name: upload js_of_ocaml build files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ExtractionJsOfOCaml-${{ matrix.coq-version }}-ocaml-${{ matrix.ocaml-compiler }}
         path: src/ExtractionJsOfOCaml
       if: always ()
     - name: Upload js_of_ocaml outputs
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: fiat-html-js-of-ocaml
         path: fiat-html
@@ -230,22 +257,22 @@ jobs:
       with:
         submodules: recursive
     - name: Set up OCaml
-      uses: ocaml/setup-ocaml@v2
+      uses: ocaml/setup-ocaml@v3
       with:
         ocaml-compiler: ${{ matrix.ocaml-compiler }}
     - name: echo build params
       run: etc/ci/describe-system-config.sh
-    - name: Set up binaryen >= 116
+    - name: Set up binaryen >= 118
       uses: acifani/setup-tinygo@v2
       with:
         tinygo-version: '0.30.0'
-        binaryen-version: '116'
+        binaryen-version: '118'
     - name: set up custom dune and wasm_of_ocaml
       run: |
         eval $(opam env)
         opam update -y
-        opam pin add -y 'https://github.com/ocaml-wasm/dune.git#wasm'
-        opam pin add -y --no-action --cli=2.1 --with-version 5.3.0 https://github.com/ocaml-wasm/wasm_of_ocaml.git
+        opam pin add -y --no-action --with-version 3.17 https://github.com/ocaml/dune.git
+        opam pin add -y --no-action --with-version 5.8.2-wasm https://github.com/ocaml-wasm/wasm_of_ocaml.git
     - name: install wasm_of_ocaml
       run: |
         eval $(opam env)
@@ -253,7 +280,7 @@ jobs:
     - name: echo build params
       run: etc/ci/describe-system-config.sh
     - name: Download a Build Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ExtractionJsOfOCaml-source-${{ matrix.coq-version }}
         path: src/ExtractionJsOfOCaml
@@ -264,13 +291,13 @@ jobs:
     - name: install-standalone-wasm-of-ocaml
       run: make -f Makefile.standalone install-standalone-wasm-of-ocaml
     - name: upload wasm_of_ocaml build files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ExtractionJsOfOCaml-${{ matrix.coq-version }}-ocaml-${{ matrix.ocaml-compiler }}+wasm
         path: src/ExtractionJsOfOCaml
       if: always ()
     - name: Upload wasm_of_ocaml outputs
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: fiat-html-wasm-of-ocaml
         path: fiat-html
@@ -288,14 +315,14 @@ jobs:
         fetch-depth: 0 # Fetch all history for all tags and branches, for fiat-html/version.js
         tags: true     # Fetch all tags as well, `fetch-depth: 0` might be sufficient depending on Git version
     - name: Download a Build Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: fiat-html-js-of-ocaml
         path: fiat-html
     - run: find fiat-html
     - run: ls -la fiat-html
     - name: Download a Build Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: fiat-html-wasm-of-ocaml
         path: fiat-html
@@ -307,7 +334,7 @@ jobs:
     - name: backup .gitignore
       run: mv .gitignore{,.bak}
     - name: Deploy js_of_ocaml and wasm_of_ocaml 🚀 ${{ ( github.ref != 'refs/heads/master' && '(dry run)' ) || '' }}
-      uses: JamesIves/github-pages-deploy-action@v4.5.0
+      uses: JamesIves/github-pages-deploy-action@v4.7.2
       with:
         branch: gh-pages # The branch the action should deploy to.
         folder: fiat-html # The folder the action should deploy.
@@ -334,19 +361,19 @@ jobs:
       with:
         submodules: recursive
     - name: Download a Build Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ExtractionOCaml-${{ matrix.coq-version }}
         path: src/ExtractionOCaml
     - name: make binaries executable
-      run: git check-ignore src/ExtractionOCaml/* | grep -v '\.' | xargs chmod +x
+      run: git check-ignore src/ExtractionOCaml/* src/ExtractionOCaml/*/* | grep -v '\.' | xargs chmod +x
     - name: generated-files
       run: etc/ci/github-actions-make.sh --warnings -f Makefile.examples -j2 generated-files
       if: github.event_name == 'pull_request'
     - run: tar -czvf generated-files.tgz fiat-*/
       if: ${{ failure() }}
     - name: upload generated files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: generated-files-${{ matrix.coq-version }}
         path: generated-files.tgz
@@ -367,14 +394,14 @@ jobs:
       with:
         submodules: recursive
     - name: Download a Build Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ExtractionHaskell-source-${{ matrix.coq-version }}
         path: src/ExtractionHaskell
     - name: standalone-haskell
-      run: etc/ci/github-actions-make.sh -f Makefile.standalone -j1 standalone-haskell GHCFLAGS='+RTS -M7G -RTS'
+      run: etc/ci/github-actions-make.sh -f Makefile.standalone -j1 standalone-haskell GHCFLAGS='+RTS -M9G -RTS'
     - name: upload Haskell files
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: ExtractionHaskell-${{ matrix.coq-version }}
         path: src/ExtractionHaskell
@@ -396,12 +423,12 @@ jobs:
       with:
         submodules: recursive
     - name: Download a Build Artifact
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: ExtractionOCaml-master
         path: src/ExtractionOCaml
     - name: make binaries executable
-      run: git check-ignore src/ExtractionOCaml/* | grep -v '\.' | xargs chmod +x
+      run: git check-ignore src/ExtractionOCaml/* src/ExtractionOCaml/*/* | grep -v '\.' | xargs chmod +x
     - name: only-test-amd64-files
       run: etc/ci/github-actions-make.sh -f Makefile.examples -j2 only-test-amd64-files SLOWEST_FIRST=1
       env:
@@ -421,7 +448,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: Download standalone Docker
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: standalone-docker-coq-${{ matrix.docker-coq-version }}
         path: dist/
@@ -466,7 +493,7 @@ jobs:
         fetch-depth: 0 # Fetch all history for all tags and branches
         tags: true     # Fetch all tags as well, `fetch-depth: 0` might be sufficient depending on Git version
     - name: Download standalone Docker
-      uses: actions/download-artifact@v3
+      uses: actions/download-artifact@v4
       with:
         name: standalone-docker-coq-dev
         path: dist/

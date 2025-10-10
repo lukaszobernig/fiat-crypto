@@ -18,7 +18,8 @@ ListNotations
 SepAutoArray
 Tactics
 UniquePose
-Word.Properties.
+Word.Properties
+memcpy.
 
 Import ProgramLogic.Coercions.
 
@@ -33,6 +34,9 @@ Require Import Crypto.Curves.Weierstrass.AffineProofs.
 
 Module W.
   Import Crypto.Bedrock.P256.Specs(a, b).
+
+  Definition a := a.
+  Definition b := b.
 
   Local Notation "4" := (1+1+1+1)%F.
   Local Notation "27" := (4*4 + 4+4 +1+1+1)%F.
@@ -55,6 +59,15 @@ Module W.
     (b := b)
     (discriminant_nonzero := discriminant_nonzero).
 End W.
+
+Local Notation Wzero := (W.zero
+  (F := F p256)
+  (Feq := eq)
+  (Fadd := F.add)
+  (Fmul := F.mul)
+  (a := W.a)
+  (b := W.b)
+  ).
 
 Existing Instance W.commutative_group.
 
@@ -106,6 +119,7 @@ Local Instance spec_of_sext_byte_word : spec_of "sext_byte_word" :=
     y = sext_byte_word x
   }.*)
 
+(* TODO: sscalar is passed in little endian, this atm processes it as big endian *)
 Definition p256_point_mul_signed :=
   func! (p_out, p_sscalar, p_P) {
     p256_set_zero(p_out); (* Set result point to identity. *)
@@ -132,10 +146,8 @@ Definition p256_point_mul_signed :=
 Definition p256_point_mul :=
   func! (p_out, p_scalar, p_P) {
     stackalloc (align num_limbs 8) as p_sscalar; (* Space for limbs of unpacked and recoded scalar. *)
-
     words_unpack(p_sscalar, p_scalar, $(256)); (* Unpack scalar into unsigned w-bit limbs. *)
     recode_wrap(p_sscalar, $num_limbs); (* Recode scalar into signed w-bit limbs. *)
-
     p256_point_mul_signed(p_out, p_sscalar, p_P) (* Multiply using signed multiplication. *)
   }.
 
@@ -312,6 +324,10 @@ Proof.
   ssplit; try ecancel_assumption; trivial.
 Qed.
 
+Lemma positional_signed_bytes_cons B (h : byte) (t : list byte) :
+  positional_signed_bytes B (h :: t) = byte.signed h + B*(positional_signed_bytes B t).
+Proof. constructor. Qed.
+
 Lemma p256_point_mul_signed_ok :
   let _ := spec_of_p256_point_add_nz_nz_neq_inplace in
   program_logic_goal_for_function! p256_point_mul_signed.
@@ -347,12 +363,12 @@ Proof.
             (W.mul (positional_signed_bytes (2^w) sscalar) (Jacobian.to_affine P)))
       /\
       T = t))
-    (fun n m => 0 <= n < m) (* well_founded relation *)
+    (fun n m => m < n <= num_limbs) (* well_founded relation *)
     _ _ _ _ _ _ _ _ _);
   Loops.loop_simpl.
 
   { repeat straightline. }
-  { eapply Z.lt_wf. }
+  { eapply Z.gt_wf. }
   {
     repeat straightline.
     ssplit; try ecancel_assumption; trivial.
@@ -376,8 +392,6 @@ Proof.
       repeat straightline.
 
       straightline_call. (* call p256_get_signed_mult *)
-
-
       {
         ssplit.
         {
@@ -398,25 +412,64 @@ Proof.
       seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ a) H25 ltac:(rewrite length_point; lia).
       assert (length (to_bytes x1) = 96%nat) by (rewrite length_point; trivial).
 
+      (* TODO: repeat straighline hangs here so we do it in steps. *)
       straightline.
 
       eexists _, _, _, _.
       split.
       { repeat straightline. }
 
-      eexists _, (_ :: _), x2, _, _.
+      (* Point addition requires the inputs to be non-zero.
+         It returns ok = 0 if the points are the same, we have to prove that this case never happens.
+       *)
+      assert (~ Jacobian.iszero x8) as H_nz_x8 by admit.
+      assert (~ Jacobian.iszero x1) as H_nz_x1 by admit.
+      specialize (H27 H_nz_x8 H_nz_x1).
+      destruct H27 as [[H_ok [H_point_diff H_point_add]] | [H_not_ok H_point_eq]].
 
-      split.
-      { admit. }
+      (* Points are distinct case. *)
+      {
+        eexists (Jacobian.add_inequal_nz_nz x8 x1 H_point_diff), x1_rest, x2, _, _.
 
-      split.
-      { admit. }
+        split.
+        {
+          replace (p_sscalar) with (word.add x5 (word.of_Z 1)) by ZnWords.
+          replace (i) with (word.add x7 (word.of_Z 1)) by ZnWords.
+          rewrite H_point_add in H25.
+          ssplit; try ecancel_assumption; trivial.
+          {
+            rewrite length_cons in H12.
+            cbv [num_limbs] in *.
+            ZnWords.
+          }
+          {
+            rewrite positional_signed_bytes_cons in H13.
+            cbv [w Recode.w] in *.
+            admit. (* TODO: this should go by ZnWords?! *)
+          }
+          inversion H14.
+          trivial.
+        }
 
-      repeat straightline.
+        split.
+        {
+          (* loop test. *)
+          cbv [num_limbs].
+          revert H8.
+          unfold br.
+          case word.ltu_spec; intros; try ZnWords.
+        }
 
-      eexists _.
-      ssplit; try ecancel_assumption; trivial.
-      { admit. }
+        repeat straightline.
+
+        eexists _.
+        cbn [bytearray].
+        ssplit; try ecancel_assumption; trivial.
+        admit.
+      }
+
+      (* Points are equal case. *)
+      admit.
     }
 
     (* base case. *)
@@ -455,8 +508,7 @@ Proof.
 
   rewrite H13.
 
-  (*rewrite H10 in H13.*)
-
+  (* rewriting W.zero hangs *)
 Admitted.
 
 Lemma p256_point_mul_ok : program_logic_goal_for_function! p256_point_mul.

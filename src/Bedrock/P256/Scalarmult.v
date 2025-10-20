@@ -19,7 +19,10 @@ SepAutoArray
 Tactics
 UniquePose
 Word.Properties
-memcpy.
+memcpy
+.
+
+Require Import Coq.Classes.Morphisms.
 
 Import ProgramLogic.Coercions.
 
@@ -58,18 +61,23 @@ Module W.
     (a := a)
     (b := b)
     (discriminant_nonzero := discriminant_nonzero).
+
+  (* HACK: Rewrite W.eq * W.zero hangs with Proper (Logic.eq ==> W.eq ==> W.eq),
+     'Definition Proper_mul := ScalarMult.Proper_scalarmult_ref' is not enough. *)
+  Instance Proper_mul c :
+    Proper (W.eq ==> W.eq) (mul c).
+  Proof.
+    apply @ScalarMult.Proper_scalarmult_ref.
+    {
+      apply Hierarchy.commutative_group_group.
+      exact commutative_group.
+    }
+    reflexivity.
+  Qed.
 End W.
 
-Local Notation Wzero := (W.zero
-  (F := F p256)
-  (Feq := eq)
-  (Fadd := F.add)
-  (Fmul := F.mul)
-  (a := W.a)
-  (b := W.b)
-  ).
-
 Existing Instance W.commutative_group.
+Existing Instance W.Proper_mul.
 
 Local Notation "xs $@ a" := (map.of_list_word_at a xs)
   (at level 10, format "xs $@ a").
@@ -106,21 +114,14 @@ Definition num_limbs := 52%nat.
 Definition align_mask x mask := Z.land (x + mask) (Z.lnot mask).
 Definition align x a := align_mask x (a - 1).
 
-(*Definition sext_byte_word x :=
-  let sign_bit := Z.land (Z.shiftr x 7) 1 in
-  let mask := Z.shiftl (0 - sign_bit) 8 in
-  Z.lor x mask.
-
-Local Instance spec_of_sext_byte_word : spec_of "sext_byte_word" :=
-  fnspec! "sext_byte_word" x / y,
-  { requires t m := True;
-    ensures T M :=
-    M = m /\ T = t /\
-    y = sext_byte_word x
-  }.*)
+(* TODO: use ($wsize.wsize - $8) instead of $56. *)
+Definition load1_sext :=
+  func! (p_b) ~> r {
+    r = (load1(p_b) << $56) .>> $56
+  }.
 
 (* TODO: sscalar is passed in little endian, this atm processes it as big endian *)
-Definition p256_point_mul_signed :=
+(*Definition p256_point_mul_signed :=
   func! (p_out, p_sscalar, p_P) {
     p256_set_zero(p_out); (* Set result point to identity. *)
 
@@ -129,13 +130,35 @@ Definition p256_point_mul_signed :=
       stackalloc sizeof_point as p_kP; (* Temporary point kP. *)
 
       p256_mul_by_pow2(p_out, $w); (* OUT = [2^w]OUT *)
-      k = load1(p_sscalar); (* k is a recoded signed scalar limb. *)
+      unpack! k = load1_sext(p_sscalar); (* k is a recoded signed scalar limb. *)
       (* TODO: sign extended load into k *)
       p256_get_signed_mult(p_kP, p_P, k); (* kP = [k]P *)
       unpack! ok = p256_point_add_nz_nz_neq(p_out, p_out, p_kP); (* OUT = OUT + kP *)
 
       p_sscalar = p_sscalar + $1;
       i = i + $1;
+
+      $(cmd.unset "ok");
+      $(cmd.unset "k");
+      $(cmd.unset "p_kP")
+    }
+  }.*)
+
+Definition p256_point_mul_signed :=
+  func! (p_out, p_sscalar, p_P) {
+    p256_set_zero(p_out); (* Set result point to identity. *)
+
+    i = $num_limbs;
+    while i {
+      stackalloc sizeof_point as p_kP; (* Temporary point kP. *)
+
+      p256_mul_by_pow2(p_out, $w); (* OUT = [2^w]OUT *)
+      unpack! k = load1_sext(p_sscalar + i - $1); (* k is a recoded signed scalar limb. *)
+      (* TODO: sign extended load into k *)
+      p256_get_signed_mult(p_kP, p_P, k); (* kP = [k]P *)
+      unpack! ok = p256_point_add_nz_nz_neq(p_out, p_out, p_kP); (* OUT = OUT + kP *)
+
+      i = i - $1;
 
       $(cmd.unset "ok");
       $(cmd.unset "k");
@@ -149,6 +172,15 @@ Definition p256_point_mul :=
     words_unpack(p_sscalar, p_scalar, $(256)); (* Unpack scalar into unsigned w-bit limbs. *)
     recode_wrap(p_sscalar, $num_limbs); (* Recode scalar into signed w-bit limbs. *)
     p256_point_mul_signed(p_out, p_sscalar, p_P) (* Multiply using signed multiplication. *)
+  }.
+
+Local Instance spec_of_load1_sext : spec_of "load1_sext" :=
+  fnspec! "load1_sext" p_b / b R ~> r,
+  { requires t m :=
+    m =* ptsto p_b b * R;
+    ensures T M :=
+    M =* ptsto p_b b * R /\ T = t /\
+    word.signed r = byte.signed b
   }.
 
 (*
@@ -199,7 +231,7 @@ Local Instance spec_of_p256_point_mul_signed : spec_of "p256_point_mul_signed" :
   { requires t m :=
     m =* out$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\
     length out = length P /\ length sscalar = num_limbs /\
-    positional_signed_bytes (2^w) sscalar < Specs.p256 /\
+    positional_signed_bytes (2^w) sscalar < Specs.p256 /\ (*TODO: lower bound*)
     Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) sscalar;
     ensures T M := exists (Q : point) (* Q = [sscalar]P *),
       M =* Q$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\ (* ... *)
@@ -221,6 +253,21 @@ Local Instance spec_of_p256_point_mul : spec_of "p256_point_mul" :=
   }.
 
 From coqutil Require Import Tactics.Tactics Macros.symmetry.
+
+Lemma load1_sext_ok : program_logic_goal_for_function! load1_sext.
+Proof.
+  repeat (straightline || apply WeakestPreconditionProperties.dexpr_expr).
+  ssplit; try ecancel_assumption; trivial.
+  subst r.
+  rewrite word.signed_srs_nowrap by ZnWords.
+  rewrite word.signed_eq_swrap_unsigned.
+  rewrite word.unsigned_slu_shamtZ by lia.
+  rewrite ?word.unsigned_of_Z_nowrap; try (pose proof byte.unsigned_range b; lia).
+  rewrite Z.shiftr_div_pow2, Z.shiftl_mul_pow2 by lia.
+  cbv [byte.signed word.wrap byte.swrap word.swrap].
+  PreOmega.Z.div_mod_to_equations.
+  lia.
+Qed.
 
 Lemma p256_mul_by_pow2_ok : program_logic_goal_for_function! p256_mul_by_pow2.
 Proof.
@@ -307,7 +354,7 @@ Proof.
         f_equal.
         lia.
       }
-      apply W.Equivalence_eq.
+      reflexivity.
     }
 
     (* Base case. *)
@@ -316,7 +363,7 @@ Proof.
     rewrite H2.
     rewrite Z.pow_0_r.
     rewrite ScalarMult.scalarmult_1_l.
-    apply W.Equivalence_eq.
+    reflexivity.
   }
 
   repeat straightline.
@@ -381,21 +428,26 @@ Proof.
       { ecancel_assumption. }
 
       repeat straightline.
+
       destruct x1 as [| x1_0 x1_rest].
       {
         (* Empty list case. *)
         rewrite List.length_nil in *.
+        (* TODO *)
         admit.
       }
-
       cbn [bytearray] in * |-.
+
+      straightline_call. (* call load1_sext *)
+      { ecancel_assumption. }
+
       repeat straightline.
 
       straightline_call. (* call p256_get_signed_mult *)
       {
         ssplit.
         {
-          seprewrite_in_by (Array.array1_iff_eq_of_list_word_at a) H20 ltac:(lia).
+          seprewrite_in_by (Array.array1_iff_eq_of_list_word_at a) H23 ltac:(lia).
           ecancel_assumption.
         }
         { rewrite length_point; trivial. }
@@ -409,8 +461,8 @@ Proof.
       repeat straightline.
 
       (* Deallocate stack. *)
-      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ a) H25 ltac:(rewrite length_point; lia).
-      assert (length (to_bytes x1) = 96%nat) by (rewrite length_point; trivial).
+      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ a) H28 ltac:(rewrite length_point; lia).
+      assert (length (to_bytes x9) = 96%nat) by (rewrite length_point; trivial).
 
       (* TODO: repeat straighline hangs here so we do it in steps. *)
       straightline.
@@ -423,31 +475,33 @@ Proof.
          It returns ok = 0 if the points are the same, we have to prove that this case never happens.
        *)
       assert (~ Jacobian.iszero x8) as H_nz_x8 by admit.
-      assert (~ Jacobian.iszero x1) as H_nz_x1 by admit.
-      specialize (H27 H_nz_x8 H_nz_x1).
-      destruct H27 as [[H_ok [H_point_diff H_point_add]] | [H_not_ok H_point_eq]].
+      assert (~ Jacobian.iszero x9) as H_nz_x9 by admit.
+      specialize (H30 H_nz_x8 H_nz_x9).
+      destruct H30 as [[H_ok [H_point_diff H_point_add]] | [H_not_ok H_point_eq]].
 
       (* Points are distinct case. *)
       {
-        eexists (Jacobian.add_inequal_nz_nz x8 x1 H_point_diff), x1_rest, x2, _, _.
+        eexists (Jacobian.add_inequal_nz_nz x8 x9 H_point_diff), x1_rest, x2, _, _.
 
         split.
         {
           replace (p_sscalar) with (word.add x5 (word.of_Z 1)) by ZnWords.
           replace (i) with (word.add x7 (word.of_Z 1)) by ZnWords.
-          rewrite H_point_add in H25.
+          rewrite H_point_add in H28.
           ssplit; try ecancel_assumption; trivial.
           {
-            rewrite length_cons in H12.
+            rewrite length_cons in H13.
             cbv [num_limbs] in *.
             ZnWords.
           }
           {
-            rewrite positional_signed_bytes_cons in H13.
+            rewrite positional_signed_bytes_cons in H14.
             cbv [w Recode.w] in *.
+            rewrite <-H25 in H14.
+            ZnWords_pre.
             admit. (* TODO: this should go by ZnWords?! *)
           }
-          inversion H14.
+          inversion H15.
           trivial.
         }
 
@@ -455,7 +509,7 @@ Proof.
         {
           (* loop test. *)
           cbv [num_limbs].
-          revert H8.
+          revert H9.
           unfold br.
           case word.ltu_spec; intros; try ZnWords.
         }
@@ -465,6 +519,14 @@ Proof.
         eexists _.
         cbn [bytearray].
         ssplit; try ecancel_assumption; trivial.
+
+        rewrite positional_signed_bytes_cons.
+        rewrite H33.
+        subst i.
+        rewrite Jacobian.to_affine_add_inequal_nz_nz by trivial.
+        rewrite H26.
+        rewrite H22.
+        rewrite <-H25.
         admit.
       }
 
@@ -476,9 +538,9 @@ Proof.
     eexists _.
     ssplit; try ecancel_assumption; trivial.
 
-    revert H8.
+    revert H9.
     unfold br.
-    case word.ltu_spec; intros; try (rewrite word.unsigned_of_Z_nowrap in H15 by lia; lia).
+    case word.ltu_spec; intros; try (rewrite word.unsigned_of_Z_nowrap in H16 by lia; lia).
 
     (* need something to show x7 = 52*)
 
@@ -491,14 +553,15 @@ Proof.
 
     rewrite ScalarMult.scalarmult_1_l.
 
-    cbv [num_limbs] in H12.
+    cbv [num_limbs] in H13.
     assert (length x1 = 0%nat) by ZnWords.
-    rewrite length_zero_iff_nil in H16.
-    rewrite H16.
+    rewrite length_zero_iff_nil in H17.
+    rewrite H17.
     cbn [positional_signed_bytes positional_bytes positional List.map fold_right].
     rewrite ScalarMult.scalarmult_0_l.
 
-    admit.
+    rewrite Hierarchy.right_identity.
+    reflexivity.
   }
 
   repeat straightline.
@@ -506,9 +569,14 @@ Proof.
   eexists x4.
   ssplit; try ecancel_assumption; trivial.
 
-  rewrite H13.
+  rewrite H14.
 
-  (* rewriting W.zero hangs *)
+  rewrite H11.
+
+  rewrite ScalarMult.scalarmult_zero_r.
+  rewrite Hierarchy.left_identity.
+  reflexivity.
+
 Admitted.
 
 Lemma p256_point_mul_ok : program_logic_goal_for_function! p256_point_mul.

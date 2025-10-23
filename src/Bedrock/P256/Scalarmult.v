@@ -350,6 +350,22 @@ Lemma positional_signed_bytes_cons B (h : byte) (t : list byte) :
   positional_signed_bytes B (h :: t) = byte.signed h + B*(positional_signed_bytes B t).
 Proof. constructor. Qed.
 
+Lemma positional_signed_bytes_app B (l l' : list byte) :
+  positional_signed_bytes B (l ++ l') = positional_signed_bytes B l + B^(length l) * positional_signed_bytes B l'.
+Proof.
+  induction l as [| ? ? H].
+  {
+    rewrite app_nil_l, length_nil.
+    cbn [positional_signed_bytes positional map fold_right].
+    lia.
+  }
+  rewrite <-app_comm_cons, length_cons.
+  rewrite ?positional_signed_bytes_cons.
+  rewrite H.
+  rewrite Znat.Nat2Z.inj_succ, Z.pow_succ_r by lia.
+  lia.
+Qed.
+
 Lemma p256_point_mul_signed_ok :
   let _ := spec_of_p256_point_add_nz_nz_neq_inplace in
   program_logic_goal_for_function! p256_point_mul_signed.
@@ -406,22 +422,23 @@ Proof.
 
       repeat straightline.
 
-      destruct (ListUtil.break_list_last x1) as [|[sscalar_rest [sscalar_word]]].
+      destruct (ListUtil.break_list_last x1) as [|[sscalar_rest [sscalar_limb]]].
       {
         (* list cannot be empty *)
         rewrite <-length_zero_iff_nil in H20.
         lia.
       }
-
-      rewrite H20 in H21.
+      rewrite H20 in *; clear dependent H20.
+      (* split length *)
+      rewrite length_app in H13.
+      cbn [length] in H13.
 
       seprewrite_in Array.bytearray_append H21.
       cbn [bytearray] in H21.
-      assert (i = word.of_Z (Z.of_nat (length sscalar_rest))) by admit.
 
       straightline_call. (* call load1_sext *)
       {
-        rewrite H23.
+        assert (i = word.of_Z (Z.of_nat (length sscalar_rest))) as -> by ZnWords.
         ecancel_assumption.
       }
 
@@ -431,7 +448,7 @@ Proof.
       {
         ssplit.
         {
-          seprewrite_in_by (Array.array1_iff_eq_of_list_word_at a) H25 ltac:(lia).
+          seprewrite_in_by (Array.array1_iff_eq_of_list_word_at a) H23 ltac:(lia).
           ecancel_assumption.
         }
         { rewrite length_point; trivial. }
@@ -445,8 +462,8 @@ Proof.
       repeat straightline.
 
       (* Deallocate stack. *)
-      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ a) H29 ltac:(rewrite length_point; lia).
-      assert (length (to_bytes x10) = 96%nat) by (rewrite length_point; trivial).
+      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ a) H28 ltac:(rewrite length_point; lia).
+      assert (length (to_bytes x9) = 96%nat) by (rewrite length_point; trivial).
 
       (* TODO: repeat straighline hangs here so we do it in steps. *)
       straightline.
@@ -461,28 +478,20 @@ Proof.
          It returns ok = 0 if the points are the same, we have to prove that this case never happens.
        *)
       assert (~ Jacobian.iszero x8) as H_nz_x8 by admit.
-      assert (~ Jacobian.iszero x10) as H_nz_x10 by admit.
-      specialize (H31 H_nz_x8 H_nz_x10).
-      destruct H31 as [[H_ok [H_point_diff H_point_add]] | [H_not_ok H_point_eq]].
+      assert (~ Jacobian.iszero x9) as H_nz_x9 by admit.
+      specialize (H30 H_nz_x8 H_nz_x9).
+      destruct H30 as [[H_ok [H_point_diff H_point_add]] | [H_not_ok H_point_eq]].
 
       (* Points are distinct case. *)
       {
-
-        eexists (Jacobian.add_inequal_nz_nz x8 x10 H_point_diff), sscalar_rest, x2, _, _.
-
+        eexists _, _, _, _, _.
         repeat straightline.
         {
           ssplit; try ecancel_assumption.
+          { ZnWords. }
           {
-            cbv [x1] in H13.
-            rewrite length_app in H13.
-            ZnWords.
-          }
-          {
-            cbv [x1] in H14.
             admit.
           }
-          cbv [x1] in H15.
           rewrite Forall_app in H15.
           destruct H15.
           trivial.
@@ -499,24 +508,39 @@ Proof.
         eexists _.
         ssplit; trivial.
         {
-          subst x1.
           seprewrite Array.bytearray_append.
           cbn [bytearray].
           assert (i = word.of_Z (Z.of_nat (length sscalar_rest))) as -> by ZnWords.
           ecancel_assumption.
         }
 
-        (* rewrite positional_signed_bytes_cons. *)
-        rewrite H34.
+        rewrite H33.
         subst i.
-        rewrite (Jacobian.to_affine_add_inequal_nz_nz _ _ _ H_nz_x8 H_nz_x10).
+        rewrite (Jacobian.to_affine_add_inequal_nz_nz _ _ _ H_nz_x8 H_nz_x9).
 
-        rewrite H26.
         rewrite H22.
+        rewrite H26.
+        rewrite H25.
+
+        rewrite positional_signed_bytes_app.
+        cbn [positional_signed_bytes positional List.map fold_right].
+        rewrite Z.mul_0_r, Z.add_0_r.
+
+        rewrite word.unsigned_sub_nowrap by ZnWords.
+        rewrite <-H13.
+
+        rewrite ?word.unsigned_of_Z_nowrap by lia.
+
         admit.
       }
 
       (* Points are equal case. *)
+      exfalso.
+      revert H_point_eq.
+      rewrite Jacobian.eq_iff.
+      rewrite H22.
+      rewrite H26.
+
       admit.
     }
 

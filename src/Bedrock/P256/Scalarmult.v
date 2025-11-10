@@ -107,7 +107,9 @@ Definition p256_mul_by_pow2 :=
 
 Definition w := Recode.w.
 Definition num_bits := 256%nat.
-(* TODO: Infer this from P256 modulus size and w. *)
+Definition p256_group_order := 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551.
+(* TODO: Infer this from p256 group order and w. *)
+(* Compute (Z.log2 p256_group_order) / w. *)
 Definition num_limbs := 52%nat.
 
 (* Align helpers. *)
@@ -195,18 +197,20 @@ Local Instance spec_of_p256_get_signed_mult : spec_of "p256_get_signed_mult" :=
   fnspec! "p256_get_signed_mult" (p_out p_P k : word) / out (P : point) R,
   { requires t m :=
     m =* out$@p_out * P$@p_P * R /\ length out = length P;
+    (* TODO: range of k small *)
     ensures T M := exists (Q : point),
     M =* Q$@p_out * P$@p_P * R /\
     W.eq (Jacobian.to_affine Q) (W.mul (word.signed k) (Jacobian.to_affine P)) /\
     T = t
   }.
 
+(* k > order/2, [-k] * [-1]P and have 2*[-k] < order *)
 Local Instance spec_of_p256_point_mul_signed : spec_of "p256_point_mul_signed" :=
   fnspec! "p256_point_mul_signed" (p_out p_sscalar p_P : word) / out sscalar (P : point) R,
   { requires t m :=
     m =* out$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\
     length out = length P /\ length sscalar = num_limbs /\
-    positional_signed_bytes (2^w) sscalar < Specs.p256 /\ (*TODO: lower bound*)
+    2 * positional_signed_bytes (2^w) sscalar < p256_group_order /\ (*TODO: lower bound*)
     Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) sscalar;
     ensures T M := exists (Q : point) (* Q = [sscalar]P *),
       M =* Q$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\ (* ... *)
@@ -220,7 +224,7 @@ Local Instance spec_of_p256_point_mul : spec_of "p256_point_mul" :=
     m =* out$@p_out * bytearray p_scalar scalar * P$@p_P * R /\
     length out = length P /\
     8 * (length scalar - 1) < num_bits <= 8 * length scalar /\
-    Z.of_bytes scalar < Specs.p256;
+    2 * Z.of_bytes scalar < p256_group_order;
     ensures T M := exists (Q : point) (* Q = [scalar]P *),
       M =* Q$@p_out * bytearray p_scalar scalar * P$@p_P * R /\ (* ... *)
       W.eq (Jacobian.to_affine Q) (W.mul (Z.of_bytes scalar) (Jacobian.to_affine P)) /\
@@ -386,10 +390,15 @@ Proof.
                                   HList.polymorphic_list.nil))))
     (* program variables *) (["p_out";"p_sscalar";"p_P";"i"] : list String.string))
     (fun v (out : point) sscalar (P : point) R t m p_out p_sscalar p_P i => PrimitivePair.pair.mk (* precondition *)
-      (v = word.unsigned i /\
+      (exists (scalar_out_limbs : list byte),
+        let scalar_out := positional_signed_bytes (2^w) scalar_out_limbs in
+        W.eq (Jacobian.to_affine out) (W.mul scalar_out (Jacobian.to_affine P)) /\
+        v = word.unsigned i /\
       m =* out$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\
       Z.of_nat (length sscalar) = i /\
-      positional_signed_bytes (2^w) sscalar < Specs.p256 /\
+      (* 2 * positional_signed_bytes (2^w) sscalar < p256_group_order *)
+      let j := i - num_limbs + 1 in
+      Z.abs (scalar_out) < 2*2^(w*i) /\
       Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) sscalar)
     (fun                                       T M P_OUT P_SSCALAR P_P I => (* postcondition *)
       exists (Q : point),
@@ -411,6 +420,7 @@ Proof.
     repeat straightline.
     ssplit; try ecancel_assumption; trivial.
     cbv [num_limbs] in *.
+    ssplit.
     ZnWords.
   }
 
@@ -480,7 +490,18 @@ Proof.
       assert (~ Jacobian.iszero x8) as H_nz_x8 by admit.
       assert (~ Jacobian.iszero x9) as H_nz_x9 by admit.
       specialize (H30 H_nz_x8 H_nz_x9).
-      destruct H30 as [[H_ok [H_point_diff H_point_add]] | [H_not_ok H_point_eq]].
+      destruct H30 as [[H_ok [H_point_diff H_point_add]] | [H_not_ok H_point_eq]]; cycle 1.
+
+      (* Points are equal case. *)
+      {
+        exfalso.
+        revert H_point_eq.
+        rewrite Jacobian.eq_iff.
+        rewrite H22.
+        rewrite H26.
+
+        admit.
+      }
 
       (* Points are distinct case. *)
       {
@@ -533,15 +554,6 @@ Proof.
 
         admit.
       }
-
-      (* Points are equal case. *)
-      exfalso.
-      revert H_point_eq.
-      rewrite Jacobian.eq_iff.
-      rewrite H22.
-      rewrite H26.
-
-      admit.
     }
 
     (* Base case. *)
@@ -599,7 +611,7 @@ Proof.
     (* Solve words_unpack assumptions. *)
     ssplit; try ecancel_assumption; try (cbv [num_bits Recode.w] in *; ZnWords).
     rewrite word.unsigned_of_Z_nowrap by lia.
-    cbv [p256] in *; lia.
+    cbv [p256_group_order] in *; lia.
   }
 
   repeat straightline.
@@ -613,7 +625,7 @@ Proof.
       cbv [Recode.w].
       (*rewrite word.unsigned_of_Z_nowrap in H8 by lia.*)
       change (5 * word.unsigned (word.of_Z 52)) with (260).
-      cbv [p256] in *.
+      cbv [p256_group_order] in *.
       lia.
     }
     { Decidable.vm_decide. }

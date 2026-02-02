@@ -99,6 +99,7 @@ Local Instance spec_of_ctime_lt : spec_of "ctime_lt" :=
 Import ProgramLogic.Coercions.
 Set Printing Coercions.
 
+(* little endian, positional 10 [2;1] = 12.*)
 Definition positional B : list Z -> Z :=
   fold_right (fun a s => a + B*s) 0.
 
@@ -879,21 +880,21 @@ Proof.
   ZnWords.
 Qed.
 
-Lemma positional_dist_p256 (B := 2^w) h t
-  (l := 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551) :
-  let words := cons h t in
-    Forall (fun b => (-2^w + 2 <= 2*b <= 2^w)) words ->
-    0 < Z.abs (2 * positional B words) < l ->
-    h mod l <> B*(positional B t) mod l.
-    (* or both sides zero if scalar = 0 *)
+#[local] Notation signed_limb_bounded k := (-2^w + 2 <= 2*k <= 2^w) (only parsing).
+#[local] Notation N := 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551.
+
+Lemma signed_limb_ineq_shifted_postivie_num (num : list Z) (limb : Z):
+  signed_limb_bounded limb ->
+  Forall (fun x => signed_limb_bounded x) num ->
+  0 <= 2^w * positional (2^w) num < N ->
+  ~ (positional (2^w) num = 0 /\ limb = 0) ->
+  (2^w * positional (2^w) num) mod N <> limb mod N.
 Proof.
   intros.
   rewrite Z.cong_iff_0.
   rewrite Z.mod_divide by lia.
   intros [x].
-  inversion H; subst.
-  cbv [words] in H0.
-  rewrite positional_cons in H0.
+  rewrite ?positional_cons in *.
   cbv [w] in *.
   lia.
 Qed.

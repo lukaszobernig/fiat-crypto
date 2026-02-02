@@ -448,7 +448,7 @@ Proof.
         let processed_scalar := positional_signed_bytes (2^w) processed_limbs in
         W.eq (Jacobian.to_affine curr_out) (W.mul processed_scalar (Jacobian.to_affine P)) /\
         v = word.unsigned i /\
-        v <= num_limbs /\
+        0 < v <= num_limbs /\
       m =* curr_out$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\
       Z.of_nat (length sscalar) = num_limbs
       (* 2 * positional_signed_bytes (2^w) sscalar < p256_group_order *)
@@ -486,6 +486,7 @@ Proof.
       reflexivity.
     }
     { cbv [num_limbs]. ZnWords. }
+    { cbv [num_limbs]. ZnWords. }
     { lia. }
   }
 
@@ -504,11 +505,11 @@ Proof.
 
       assert (Z.to_nat (word.unsigned i) < length sscalar)%nat as i_bounded by ZnWords.
       pose proof (symmetry! firstn_nth_skipn _ (Z.to_nat (word.unsigned i)) sscalar x00 i_bounded) as sscalar_parts.
-      rewrite sscalar_parts in H21.
-      rewrite app_assoc, <-assoc_app_cons in H21.
+      rewrite sscalar_parts in H22.
+      rewrite app_assoc, <-assoc_app_cons in H22.
 
-      seprewrite_in Array.bytearray_append H21.
-      cbn [bytearray] in H21.
+      seprewrite_in Array.bytearray_append H22.
+      cbn [bytearray] in H22.
 
       rename x0 into shifted_out.
 
@@ -526,7 +527,7 @@ Proof.
       {
         ssplit.
         {
-          seprewrite_in_by (Array.array1_iff_eq_of_list_word_at p_kP) H23 ltac:(lia).
+          seprewrite_in_by (Array.array1_iff_eq_of_list_word_at p_kP) H24 ltac:(lia).
           ecancel_assumption.
         }
         { rewrite length_point; trivial. }
@@ -541,52 +542,47 @@ Proof.
       {
         ssplit; try ecancel_assumption; trivial.
         intros.
-        rewrite H22, H26, H9.
+        rewrite H23, H27, H9.
         rewrite ScalarMult.scalarmult_assoc.
         rewrite Z.mul_comm, word.unsigned_of_Z_nowrap by lia.
         rewrite group_isom.
-        intro H_pts_eq.
 
-        admit.
+        apply signed_limb_ineq_shifted_postivie_num.
 
-        (*eapply positional_dist_p256.
-        3 : {
-          cbv [w Recode.w].
-          cbv [positional_signed_bytes] in H_pts_eq.
-          fold p256_group_order.
-          rewrite <-H_pts_eq.
-          reflexivity.
-        }
-
-        2 : {
-          assert (-2^w + 2 <= 2*(word.signed k) <= 2^w) by admit.
-          cbv [w Recode.w] in *.
-          cbv [p256_group_order] in *.
-          cbv [positional_signed_bytes] in *.
-          cbv [num_limbs] in *.
-          rewrite positional_cons.
-
-          (* TODO: is this even true? *)
-          assert (0 < positional (2 ^ 5) (map byte.signed scalar_out_limbs')) by admit.
-
-          ZnWords.
-        }
-
-        apply Forall_cons.
         {
-          rewrite H28, sscalar_parts.
+          rewrite H26, sscalar_parts.
           subst i.
           rewrite firstn_nth_skipn.
           {
-            eapply Forall_nth_default' in H18.
-            Search Forall nth.
-            H18
+            eapply Forall_nth_default' in H8.
+            admit.
           }
           ZnWords.
         }
+        {
+          admit. (* forall and skipn, sscalar is bound*)
+        }
+        {
+          admit. (*should follow from h7 and h13, if the whole thing is bounded, then any suffix will be bounded*)
 
-        (* Should be OK. *)
-        admit.*)
+        }
+        {
+          intros [HNP HNk].
+          apply H21.
+          split.
+          {
+            rewrite H23.
+            rewrite H9.
+            unfold positional_signed_bytes.
+            rewrite HNP.
+            admit. (* zero times something is zero*)
+          }
+          {
+            rewrite H27.
+            rewrite HNk.
+            admit. (* zero times something is zero*)
+          }
+        }
       }
 
       repeat straightline.
@@ -594,7 +590,7 @@ Proof.
       rename x0 into curr_out_new.
 
       (* Deallocate stack. *)
-      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ p_kP) H28 ltac:(rewrite length_point; lia).
+      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ p_kP) H29 ltac:(rewrite length_point; lia).
       assert (length (to_bytes kP) = 96%nat) by (rewrite length_point; trivial).
 
       (* TODO: repeat straighline hangs here so we do it in steps. *)

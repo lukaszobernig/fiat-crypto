@@ -219,7 +219,7 @@ Local Instance spec_of_p256_point_mul_signed : spec_of "p256_point_mul_signed" :
   { requires t m :=
     m =* out$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\
     length out = length P /\ length sscalar = num_limbs /\
-    2 * positional_signed_bytes (2^w) sscalar < p256_group_order /\
+    0 < positional_signed_bytes (2^w) sscalar < p256_group_order /\
     Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) sscalar;
     ensures T M := exists (Q : point) (* Q = [sscalar]P *),
       M =* Q$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\ (* ... *)
@@ -233,7 +233,7 @@ Local Instance spec_of_p256_point_mul : spec_of "p256_point_mul" :=
     m =* out$@p_out * bytearray p_scalar scalar * P$@p_P * R /\
     length out = length P /\
     8 * (length scalar - 1) < num_bits <= 8 * length scalar /\
-    2 * Z.of_bytes scalar < p256_group_order;
+    0 < Z.of_bytes scalar < p256_group_order;
     ensures T M := exists (Q : point) (* Q = [scalar]P *),
       M =* Q$@p_out * bytearray p_scalar scalar * P$@p_P * R /\ (* ... *)
       W.eq (Jacobian.to_affine Q) (W.mul (Z.of_bytes scalar) (Jacobian.to_affine P)) /\
@@ -481,7 +481,7 @@ Proof.
       rewrite <-H6.
       rewrite skipn_all.
       cbn [positional_signed_bytes positional fold_right map].
-      rewrite H11.
+      rewrite H12.
       rewrite ScalarMult.scalarmult_0_l.
       reflexivity.
     }
@@ -505,11 +505,11 @@ Proof.
 
       assert (Z.to_nat (word.unsigned i) < length sscalar)%nat as i_bounded by ZnWords.
       pose proof (symmetry! firstn_nth_skipn _ (Z.to_nat (word.unsigned i)) sscalar x00 i_bounded) as sscalar_parts.
-      rewrite sscalar_parts in H22.
-      rewrite app_assoc, <-assoc_app_cons in H22.
+      rewrite sscalar_parts in H23.
+      rewrite app_assoc, <-assoc_app_cons in H23.
 
-      seprewrite_in Array.bytearray_append H22.
-      cbn [bytearray] in H22.
+      seprewrite_in Array.bytearray_append H23.
+      cbn [bytearray] in H23.
 
       rename x0 into shifted_out.
 
@@ -527,7 +527,7 @@ Proof.
       {
         ssplit.
         {
-          seprewrite_in_by (Array.array1_iff_eq_of_list_word_at p_kP) H24 ltac:(lia).
+          seprewrite_in_by (Array.array1_iff_eq_of_list_word_at p_kP) H25 ltac:(lia).
           ecancel_assumption.
         }
         { rewrite length_point; trivial. }
@@ -542,7 +542,7 @@ Proof.
       {
         ssplit; try ecancel_assumption; trivial.
         intros.
-        rewrite H23, H27, H9.
+        rewrite H24, H28, H10.
         rewrite ScalarMult.scalarmult_assoc.
         rewrite Z.mul_comm, word.unsigned_of_Z_nowrap by lia.
         rewrite group_isom.
@@ -550,7 +550,7 @@ Proof.
         apply signed_limb_ineq_shifted_postivie_num.
 
         {
-          rewrite H26, sscalar_parts.
+          rewrite H27, sscalar_parts.
           subst i.
           rewrite firstn_nth_skipn.
           {
@@ -563,16 +563,34 @@ Proof.
           admit. (* forall and skipn, sscalar is bound*)
         }
         {
-          admit. (*should follow from h7 and h13, if the whole thing is bounded, then any suffix will be bounded*)
-
+          epose proof num_positive_suffix_non_negative as O2.
+          split.
+          {
+            rewrite <- skipn_map.
+            assert (0 <= positional (2 ^ Recode.w) (ListDef.skipn (Z.to_nat v) (map byte.signed sscalar))); try lia.
+            apply O2.
+            {
+              apply Forall_map.
+              assumption.
+            }
+            {
+              admit. (* 0 < positional (2 ^ w) (map byte.signed sscalar) - we will need to add this to the spec. *)
+            }
+            {
+              rewrite map_length. lia.
+            }
+          }
+          {
+            admit. (*TODO use num_bounded_suffix_bounded once it finished *)
+          }
         }
         {
           intros [HNP HNk].
-          apply H21.
+          apply H22.
           split.
           {
-            rewrite H23.
-            rewrite H9.
+            rewrite H24.
+            rewrite H10.
             unfold positional_signed_bytes.
             rewrite HNP.
             admit. (* zero times something is zero*)
@@ -611,6 +629,7 @@ Proof.
         ssplit; try ecancel_assumption; trivial.
 
         {
+          admit. (*
           rewrite
           rewrite positional_signed_bytes_cons.
 
@@ -632,7 +651,7 @@ Proof.
           cbv [w Recode.w].
 
           rewrite Hierarchy.commutative.
-          reflexivity.
+          reflexivity. *)
         }
         { ZnWords. }
 

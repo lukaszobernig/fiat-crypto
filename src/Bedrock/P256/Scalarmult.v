@@ -1,4 +1,4 @@
-Require Import String coqutil.Datatypes.List Coq.Lists.List.
+Require Import String coqutil.Datatypes.List.
 Require Import Bedrock.P256.Specs.
 Import Specs.NotationsCustomEntry Specs.coord Specs.point.
 Import bedrock2.Syntax bedrock2.NotationsCustomEntry
@@ -19,8 +19,8 @@ SepAutoArray
 Tactics
 UniquePose
 Word.Properties
-memcpy
-.
+memcpy.
+Require Import Coq.Lists.List.
 
 Require Import Coq.Classes.Morphisms.
 
@@ -84,7 +84,7 @@ Local Notation "xs $@ a" := (map.of_list_word_at a xs)
 
 Local Notation bytearray := (Array.array ptsto (word.of_Z 1)).
 
-Definition sizeof_point := 96%nat.
+Notation sizeof_point := 96%nat.
 
 From Crypto.Bedrock.P256 Require Import Jacobian Recode.
 
@@ -105,12 +105,12 @@ Definition p256_mul_by_pow2 :=
 (*Definition p256_set_zero :=
   func! (p_P) { (* set to [0,1,0] *) }.*)
 
-Definition w := Recode.w.
-Definition num_bits := 256%nat.
-Definition p256_group_order := 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551.
+Notation w := Recode.w.
+Notation num_bits := 256%nat.
+Notation p256_group_order := 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551.
 (* TODO: Infer this from p256 group order and w. *)
 (* Compute (Z.log2 p256_group_order) / w. *)
-Definition num_limbs := 52%nat.
+Notation num_limbs := 52%nat.
 
 (* Align helpers. *)
 Definition align_mask x mask := Z.land (x + mask) (Z.lnot mask).
@@ -406,23 +406,88 @@ Proof.
   cancel.
 Qed.
 
-Lemma positional_dist_p256 (B := 2^w) h t
-  (l := 0xffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551) :
-  let words := cons h t in
-    Forall (fun b => (-2^w + 2 <= 2*b <= 2^w)) words ->
-    0 < Z.abs (2 * B * positional B words) < 2^(w*num_limbs) ->
-    h mod l <> B*(positional B t) mod l.
-    (* or both sides zero if scalar = 0 *)
+Lemma positional_skipn_nth (i : nat) B l d :
+  (i > 0) -> (i - 1 < length l)%nat ->
+    positional B (skipn (i - 1) l) = positional B (skipn i l) * B + (nth (i - 1) l d).
 Proof.
   intros.
-  rewrite Z.cong_iff_0.
-  rewrite Z.mod_divide by lia.
-  intros [x].
-  inversion H; subst.
-  cbv [words] in H0.
-  rewrite positional_cons in H0.
-  cbv [w Recode.w num_limbs] in *.
+  remember (positional B (skipn i l) * B + nth (i - 1) l d).
+  rewrite <-(firstn_nth_skipn _ (i - 1) l d H0).
+  rewrite skipn_app.
+  rewrite skipn_all2; try (rewrite length_firstn; lia).
+  rewrite app_nil_l, length_firstn.
+  replace (i - 1 - Nat.min (i - 1) (length l))%nat with 0%nat by lia.
+  rewrite skipn_0.
+  replace (S (i - 1))%nat with i%nat by lia.
+  change ([nth (i - 1) l d] ++ skipn i l) with ((nth (i - 1) l d) :: skipn i l).
+  rewrite positional_cons.
   lia.
+Qed.
+
+Lemma positional_app B a b :
+  positional B (a ++ b) = positional B a + B ^ length a * positional B b.
+Proof.
+  induction a.
+  {
+    rewrite app_nil_l.
+    rewrite length_nil.
+    cbn [positional fold_right].
+    lia.
+  }
+  {
+    rewrite <-app_comm_cons.
+    rewrite !positional_cons.
+    rewrite IHa.
+    rewrite length_cons.
+    rewrite Z.mul_add_distr_l.
+    rewrite Z.mul_assoc.
+    rewrite Pow.Z.pow_mul_base by lia.
+    lia.
+  }
+Qed.
+
+Lemma positional_firstn_skipn (i : nat) B l :
+  (i <= length l)%nat ->
+  positional B l = positional B (skipn i l) * B ^ i + positional B (firstn i l).
+Proof.
+  intros.
+  remember (positional B (skipn i l) * B ^ i + positional B (firstn i l)).
+  rewrite <-(firstn_skipn i l).
+  rewrite positional_app.
+  rewrite length_firstn.
+  replace (Nat.min i (length l)) with i by lia.
+  lia.
+Qed.
+
+Lemma positional_firstn_nth_skipn_prev (i : nat) B l d :
+  (0 < i) -> (i - 1 < length l)%nat ->
+  positional B l =
+  positional B (skipn i l) * B ^ i + (nth (i - 1) l d) * B ^ (i - 1) + positional B (firstn (i - 1) l).
+Proof.
+  intros.
+  remember (positional B (skipn i l) * B ^ i + (nth (i - 1) l d) * B ^ (i - 1) + positional B (firstn (i - 1) l)).
+  rewrite <-(firstn_nth_skipn _ (i - 1) l d H0).
+  rewrite ?positional_app.
+  rewrite length_firstn, length_cons, length_nil.
+  replace (Nat.min (i - 1) (length l)) with (i - 1)%nat by lia.
+  cbn [positional fold_right].
+  rewrite Z.pow_1_r, Z.mul_0_r, Z.add_0_r.
+  rewrite Z.mul_add_distr_l, Z.mul_assoc, Z.add_assoc.
+  rewrite <-(Z.mul_comm B).
+  rewrite <-Z.pow_succ_r by lia.
+  assert (S (i - 1) = i) as -> by lia.
+  assert (Z.succ (Z.of_nat (i - 1)) = Z.of_nat i) as -> by lia.
+  assert (Z.of_nat (i - 1) = Z.of_nat i - 1) as -> by lia.
+  lia.
+Qed.
+
+(* TODO: Add to coqutil. *)
+Lemma Forall_skipn' {A} {P: A -> Prop}: forall (n: nat) (l: list A),
+    Forall P l -> Forall P (skipn n l).
+Proof.
+  induction n; intros.
+  - simpl. assumption.
+  - destruct l. 1: assumption. inversion H. subst. simpl. apply IHn; eauto.
 Qed.
 
 Lemma p256_point_mul_signed_ok :
@@ -448,7 +513,7 @@ Proof.
         let processed_scalar := positional_signed_bytes (2^w) processed_limbs in
         W.eq (Jacobian.to_affine curr_out) (W.mul processed_scalar (Jacobian.to_affine P)) /\
         v = word.unsigned i /\
-        0 < v <= num_limbs /\
+        0 <= v <= num_limbs /\
       m =* curr_out$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\
       Z.of_nat (length sscalar) = num_limbs
       (* 2 * positional_signed_bytes (2^w) sscalar < p256_group_order *)
@@ -475,7 +540,6 @@ Proof.
     repeat straightline.
     ssplit; try ecancel_assumption; trivial.
     {
-      cbv [num_limbs] in *.
       subst i.
       assert (Z.to_nat (word.unsigned (word.of_Z 52)) = 52%nat) as -> by ZnWords.
       rewrite <-H6.
@@ -485,8 +549,8 @@ Proof.
       rewrite ScalarMult.scalarmult_0_l.
       reflexivity.
     }
-    { cbv [num_limbs]. ZnWords. }
-    { cbv [num_limbs]. ZnWords. }
+    { ZnWords. }
+    { ZnWords. }
     { lia. }
   }
 
@@ -554,13 +618,15 @@ Proof.
           subst i.
           rewrite firstn_nth_skipn.
           {
-            eapply Forall_nth_default' in H8.
-            admit.
+            erewrite (Forall_nth_default' _ _ x00) in H8 by Decidable.vm_decide.
+            apply H8.
           }
           ZnWords.
         }
         {
-          admit. (* forall and skipn, sscalar is bound*)
+          rewrite Forall_map.
+          apply Forall_skipn'.
+          apply H8.
         }
         {
           epose proof num_positive_suffix_non_negative as O2.
@@ -573,9 +639,7 @@ Proof.
               apply Forall_map.
               assumption.
             }
-            {
-              admit. (* 0 < positional (2 ^ w) (map byte.signed sscalar) - we will need to add this to the spec. *)
-            }
+            { apply H7. }
             {
               rewrite map_length. lia.
             }
@@ -593,12 +657,14 @@ Proof.
             rewrite H10.
             unfold positional_signed_bytes.
             rewrite HNP.
-            admit. (* zero times something is zero*)
+            rewrite ScalarMult.scalarmult_0_l, ScalarMult.scalarmult_zero_r.
+            reflexivity.
           }
           {
-            rewrite H27.
+            rewrite H28.
             rewrite HNk.
-            admit. (* zero times something is zero*)
+            rewrite ScalarMult.scalarmult_0_l.
+            reflexivity.
           }
         }
       }
@@ -608,7 +674,7 @@ Proof.
       rename x0 into curr_out_new.
 
       (* Deallocate stack. *)
-      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ p_kP) H29 ltac:(rewrite length_point; lia).
+      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ p_kP) H30 ltac:(rewrite length_point; lia).
       assert (length (to_bytes kP) = 96%nat) by (rewrite length_point; trivial).
 
       (* TODO: repeat straighline hangs here so we do it in steps. *)
@@ -624,45 +690,43 @@ Proof.
       repeat straightline.
 
       {
-        cbv [i] in H28.
-        seprewrite_in_by bytearray_firstn_nth_skipn H28 ltac:(ZnWords).
+        cbv [i] in H30.
+        seprewrite_in_by bytearray_firstn_nth_skipn H30 ltac:(ZnWords).
         ssplit; try ecancel_assumption; trivial.
 
         {
-          admit. (*
-          rewrite
-          rewrite positional_signed_bytes_cons.
-
-          rewrite ScalarMult.scalarmult_add_l.
-          rewrite Z.mul_comm.
-          rewrite <-ScalarMult.scalarmult_assoc.
-
-          rewrite <-H10.
-
-          rewrite H33.
-
+          rewrite H32.
           rewrite Jacobian.to_affine_add.
+          rewrite H24, H10, H28.
+          subst i v.
+          rewrite H27.
 
-          rewrite H25, H29.
-
-          rewrite H28.
+          rewrite ScalarMult.scalarmult_assoc.
+          rewrite <-ScalarMult.scalarmult_add_l.
 
           rewrite word.unsigned_of_Z_nowrap by lia.
-          cbv [w Recode.w].
 
-          rewrite Hierarchy.commutative.
-          reflexivity. *)
+          cbv [positional_signed_bytes].
+          rewrite <-?skipn_map.
+
+          assert (
+            Z.to_nat (word.unsigned (word.sub i0 (word.of_Z 1))) =
+            (Z.to_nat (word.unsigned i0) - 1)%nat
+          ) as -> by ZnWords.
+
+          rewrite (positional_skipn_nth _ _ _ (byte.signed x00)).
+          {
+            rewrite map_nth.
+            reflexivity.
+          }
+          { ZnWords. }
+          {
+            rewrite length_map.
+            ZnWords.
+          }
         }
         { ZnWords. }
-
-        (*
-        H17 : 2 ^ w * Z.abs (positional_signed_bytes (2 ^ w) x8) < p256_group_order
-        H18 : Forall (fun b => - 2 ^ w + 2 <= 2 * byte.signed b <= 2 ^ w) x1
-        *)
-
-        rewrite positional_signed_bytes_cons.
-
-        admit.
+        { ZnWords. }
       }
 
       split.
@@ -676,20 +740,54 @@ Proof.
       eexists _.
       ssplit; try ecancel_assumption; trivial.
 
-      rewrite H37.
-      rewrite H33.
+      rewrite H36.
+      rewrite H32.
 
       rewrite Jacobian.to_affine_add.
 
-      rewrite H25, H29.
+      rewrite H24, H28.
 
-      rewrite H28.
+      rewrite H27.
 
       rewrite word.unsigned_of_Z_nowrap by lia.
-      cbv [w Recode.w v i].
+      subst v i.
 
-      (* Should be OK. *)
-      admit.
+      rewrite H10.
+
+      cbv [positional_signed_bytes].
+      rewrite <-?skipn_map, <-?firstn_map.
+
+      assert (
+        Z.to_nat (word.unsigned (word.sub i0 (word.of_Z 1))) =
+        (Z.to_nat (word.unsigned i0) - 1)%nat
+      ) as -> by ZnWords.
+
+      repeat rewrite ?ScalarMult.scalarmult_assoc, <-?ScalarMult.scalarmult_add_l.
+
+      Morphisms.f_equiv.
+
+      rewrite (Z.pow_mul_r 2 5 (word.unsigned i0)) by lia.
+      assert ((2 ^ 5) ^ word.unsigned i0 = (2 ^ 5) ^ Z.of_nat (Z.to_nat i0)) as -> by (f_equal; ZnWords).
+      rewrite <-positional_firstn_skipn by listZnWords.
+
+      rewrite <-map_nth.
+      rewrite (Z.pow_mul_r 2 5 (word.unsigned (word.sub i0 (word.of_Z 1)))) by ZnWords.
+      assert ((2 ^ 5) ^ word.unsigned (word.sub i0 (word.of_Z 1)) = (2 ^ 5) ^ Z.of_nat (Z.to_nat i0 - 1)) as -> by (f_equal; ZnWords).
+
+      rewrite Z.mul_add_distr_r.
+
+      rewrite <-Z.mul_assoc.
+      assert (
+        2 ^ 5 * (2 ^ 5) ^ Z.of_nat (Z.to_nat (word.unsigned i0) - 1) =
+        (2 ^ 5) ^ Z.of_nat (Z.to_nat (word.unsigned i0))
+      ) as ->.
+      {
+        rewrite Pow.Z.pow_mul_base by ZnWords.
+        f_equal.
+        ZnWords.
+      }
+      assert (Z.of_nat (Z.to_nat (word.unsigned i0) - 1) = Z.of_nat (Z.to_nat (word.unsigned i0)) - 1) as -> by lia.
+      rewrite <-positional_firstn_nth_skipn_prev; (rewrite ?length_map; lia).
     }
 
     (* Base case. *)
@@ -724,11 +822,7 @@ Proof.
   cbv [i].
   rewrite word.unsigned_of_Z_nowrap by lia.
 
-  assert (Z.to_nat 52 = length sscalar) as ->.
-  {
-    cbv [num_limbs] in *.
-    lia.
-  }
+  assert (Z.to_nat 52 = length sscalar) as -> by lia.
   rewrite firstn_all.
 
   reflexivity.
@@ -749,15 +843,15 @@ Proof.
     rewrite length_firstn.
     lia.
   }
-  rewrite H11 in H2.
+  rewrite H12 in H2.
   set (word.add a (word.of_Z (Z.of_nat 52))) in H2.
 
   straightline_call. (* call words_unpack *)
   {
     (* Solve words_unpack assumptions. *)
-    ssplit; try ecancel_assumption; try (cbv [num_bits Recode.w] in *; ZnWords).
+    ssplit; try ecancel_assumption; try ZnWords.
     rewrite word.unsigned_of_Z_nowrap by lia.
-    cbv [p256_group_order] in *; lia.
+    lia.
   }
 
   repeat straightline.
@@ -767,11 +861,8 @@ Proof.
     ssplit; try ecancel_assumption; trivial.
     { ZnWords. }
     {
-      rewrite <-H17.
-      cbv [Recode.w].
-      (*rewrite word.unsigned_of_Z_nowrap in H8 by lia.*)
+      rewrite <-H18.
       change (5 * word.unsigned (word.of_Z 52)) with (260).
-      cbv [p256_group_order] in *.
       lia.
     }
     { Decidable.vm_decide. }
@@ -779,12 +870,12 @@ Proof.
 
   repeat straightline.
   straightline_call. (* call p256_point_mul_signed *)
-  { ssplit; try ecancel_assumption; trivial; try (cbv [num_limbs w]; ZnWords). }
+  { ssplit; try ecancel_assumption; trivial; try ZnWords. }
 
   repeat straightline.
 
   (* Restore stack by combining scalar and padding. *)
-  seprewrite_in_by (Array.bytearray_index_merge x0 padding) H21 ZnWords.
+  seprewrite_in_by (Array.bytearray_index_merge x0 padding) H22 ZnWords.
   assert (length (x0 ++ padding) = 56%nat).
   {
     rewrite length_app.
@@ -798,338 +889,6 @@ Proof.
   eexists _.
   ssplit; try ecancel_assumption; trivial.
 
-  cbv [Recode.w w] in *.
-  rewrite H24.
-  rewrite H22.
-  rewrite <-H17.
-  apply W.Equivalence_eq.
+  rewrite H25, H23, <-H18.
+  reflexivity.
 Qed.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-(* OLD PROOF STUFF *)
-
-      (* Point addition requires the inputs to be non-zero.
-         It returns ok = 0 if the points are the same, we have to prove that this case never happens.
-       *)
-      assert (~ Jacobian.iszero x9) as H_nz_x9 by admit.
-      assert (~ Jacobian.iszero x11) as H_nz_x11 by admit.
-      specialize (H32 H_nz_x9 H_nz_x11).
-      destruct H32 as [[H_ok [H_point_diff H_point_add]] | [H_not_ok H_point_eq]]; cycle 1.
-
-      (* Points are equal case. *)
-      {
-        exfalso.
-        revert H_point_eq.
-        rewrite Jacobian.eq_iff.
-        rewrite H24.
-        rewrite H28.
-
-        rewrite H9.
-        rewrite ScalarMult.scalarmult_assoc.
-        rewrite Z.mul_comm, word.unsigned_of_Z_nowrap by lia.
-
-        rewrite group_isom.
-
-        intro Hmul.
-
-        eapply positional_dist_p256.
-
-        3 : {
-          cbv [Recode.w].
-          cbv [positional_signed_bytes] in Hmul.
-          fold p256_group_order.
-          rewrite <-Hmul.
-          reflexivity.
-        }
-        { admit. }
-
-
-
-
-
-        admit.
-      }
-
-      (* Points are distinct case. *)
-      {
-        eexists _, _, _, _, _.
-        repeat straightline.
-        {
-          exists ((nth (Z.to_nat (word.unsigned (word.sub x7 (word.of_Z 1)))) x1 x00) :: x8).
-          cbv [i] in H30.
-          seprewrite_in_by bytearray_firstn_nth_skipn H30 ltac:(ZnWords).
-          ssplit; try ecancel_assumption; trivial.
-          {
-            rewrite positional_signed_bytes_cons.
-
-            rewrite ScalarMult.scalarmult_add_l.
-            rewrite Z.mul_comm.
-            rewrite <-ScalarMult.scalarmult_assoc.
-
-            rewrite <-H9.
-
-            rewrite (Jacobian.to_affine_add_inequal_nz_nz _ _ _ H_nz_x9 H_nz_x11).
-            rewrite H24, H28.
-
-            rewrite H27.
-
-            rewrite word.unsigned_of_Z_nowrap by lia.
-            cbv [w Recode.w].
-
-            rewrite Hierarchy.commutative.
-            reflexivity.
-          }
-          { ZnWords. }
-          { rewrite <-H15. listZnWords. } (* TODO: Fix destroying x1 stuff. *)
-
-          { admit. }
-
-          (* Fix destroying x1 stuff. *)
-          admit.
-        }
-
-        split.
-        {
-          (* loop test. *)
-          ZnWords.
-        }
-
-        repeat straightline.
-
-        eexists _.
-        (* TODO: Fix destroying x1 stuff. *)
-        rewrite <-(firstn_nth_skipn _ (Z.to_nat (word.unsigned i)) x1 x00 i_bounded) in H32.
-        rewrite app_assoc, <-assoc_app_cons in H32.
-        ssplit; try ecancel_assumption; trivial.
-
-        rewrite H35.
-        rewrite (Jacobian.to_affine_add_inequal_nz_nz _ _ _ H_nz_x9 H_nz_x11).
-        rewrite H24, H28.
-
-        rewrite H27.
-
-        admit.
-      }
-    }
-
-    (* Base case. *)
-    eexists _.
-    ssplit; try ecancel_assumption; trivial.
-
-    rewrite H9.
-
-    cbv [v].
-    rewrite H12.
-    rewrite Znat.Z2Nat.inj_0, firstn_0.
-    cbn [positional_signed_bytes positional List.map fold_right].
-
-    rewrite ScalarMult.scalarmult_0_l.
-    rewrite Hierarchy.right_identity.
-
-    rewrite Z.mul_0_r, Z.pow_0_r.
-    rewrite ScalarMult.scalarmult_1_l.
-    reflexivity.
-  }
-
-  repeat straightline.
-  eexists _.
-  ssplit; try ecancel_assumption; trivial.
-
-  rewrite H14.
-  rewrite H11.
-
-  rewrite ScalarMult.scalarmult_zero_r.
-  rewrite Hierarchy.left_identity.
-
-  cbv [i].
-  rewrite word.unsigned_of_Z_nowrap by lia.
-
-  assert (Z.to_nat 52 = length sscalar) as ->.
-  {
-    cbv [num_limbs] in *.
-    lia.
-  }
-  rewrite firstn_all.
-
-  reflexivity.
-Admitted.
-
-
-      destruct (ListUtil.break_list_last x1) as [|[sscalar_rest [sscalar_limb]]].
-      {
-        (* list cannot be empty *)
-        rewrite <-length_zero_iff_nil in H21.
-        lia.
-      }
-      rewrite H21 in *; clear dependent H21.
-      (* split length *)
-      rewrite length_app in H14.
-      cbn [length] in H14.
-
-      seprewrite_in Array.bytearray_append H22.
-      cbn [bytearray] in H22.
-
-      straightline_call. (* call load1_sext *)
-      {
-        assert (i = word.of_Z (Z.of_nat (length sscalar_rest))) as -> by ZnWords.
-        ecancel_assumption.
-      }
-
-      repeat straightline.
-
-      straightline_call. (* call p256_get_signed_mult *)
-      {
-        ssplit.
-        {
-          seprewrite_in_by (Array.array1_iff_eq_of_list_word_at a) H24 ltac:(lia).
-          ecancel_assumption.
-        }
-        { rewrite length_point; trivial. }
-      }
-
-      repeat straightline.
-
-      straightline_call. (* call p256_point_add_nz_nz_neq *)
-      { ssplit; try ecancel_assumption; trivial. }
-
-      repeat straightline.
-
-      (* Deallocate stack. *)
-      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ a) H29 ltac:(rewrite length_point; lia).
-      assert (length (to_bytes x10) = 96%nat) by (rewrite length_point; trivial).
-
-      (* TODO: repeat straighline hangs here so we do it in steps. *)
-      straightline.
-
-      eexists _, _, _, _.
-      split.
-      { repeat straightline. }
-
-      repeat straightline.
-
-      (* Point addition requires the inputs to be non-zero.
-         It returns ok = 0 if the points are the same, we have to prove that this case never happens.
-       *)
-      assert (~ Jacobian.iszero x9) as H_nz_x9 by admit.
-      assert (~ Jacobian.iszero x10) as H_nz_x10 by admit.
-      specialize (H31 H_nz_x9 H_nz_x10).
-      destruct H31 as [[H_ok [H_point_diff H_point_add]] | [H_not_ok H_point_eq]]; cycle 1.
-
-      (* Points are equal case. *)
-      {
-        exfalso.
-        revert H_point_eq.
-        rewrite Jacobian.eq_iff.
-        rewrite H23.
-        rewrite H27.
-
-        rewrite H9.
-
-        admit.
-      }
-
-      (* Points are distinct case. *)
-      {
-        eexists _, _, _, _, _.
-        repeat straightline.
-        {
-          eexists _. (* TODO: needs correct bytes *)
-          ssplit; try ecancel_assumption; trivial.
-          { admit. }
-          {
-            ZnWords.
-          }
-          { admit. }
-          rewrite Forall_app in H16.
-          destruct H16.
-          trivial.
-        }
-
-        split.
-        {
-          (* loop test. *)
-          ZnWords.
-        }
-
-        repeat straightline.
-
-        eexists _.
-        ssplit; trivial.
-        {
-          seprewrite Array.bytearray_append.
-          cbn [bytearray].
-          assert (i = word.of_Z (Z.of_nat (length sscalar_rest))) as -> by ZnWords.
-          ecancel_assumption.
-        }
-
-        rewrite H34.
-        subst i.
-        rewrite (Jacobian.to_affine_add_inequal_nz_nz _ _ _ H_nz_x9 H_nz_x10).
-
-        rewrite H23.
-        rewrite H27.
-        rewrite H26.
-
-        rewrite positional_signed_bytes_app.
-        cbn [positional_signed_bytes positional List.map fold_right].
-        rewrite Z.mul_0_r, Z.add_0_r.
-
-        rewrite word.unsigned_sub_nowrap by ZnWords.
-        rewrite <-H14.
-
-        rewrite ?word.unsigned_of_Z_nowrap by lia.
-
-        admit.
-      }
-    }
-
-    (* Base case. *)
-    eexists _.
-    ssplit; try ecancel_assumption; trivial.
-
-    assert (x1 = []) as ->.
-    {
-      rewrite <-length_zero_iff_nil.
-      ZnWords.
-    }
-    cbn [positional_signed_bytes positional List.map fold_right].
-
-    rewrite ScalarMult.scalarmult_0_l.
-    rewrite Hierarchy.right_identity.
-
-    rewrite H12, Z.mul_0_r, Z.pow_0_r.
-    rewrite ScalarMult.scalarmult_1_l.
-    reflexivity.
-  }
-
-  repeat straightline.
-  eexists _.
-  ssplit; try ecancel_assumption; trivial.
-
-  rewrite H14.
-  rewrite H11.
-
-  rewrite ScalarMult.scalarmult_zero_r.
-  rewrite Hierarchy.left_identity.
-
-  reflexivity.
-Admitted.

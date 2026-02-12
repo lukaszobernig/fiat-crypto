@@ -38,7 +38,7 @@ Definition index_bits :=
   }.
 
 (* Word size (nonzero). *)
-Definition w := 5.
+Notation w := 5.
 
 Definition words_unpack :=
   func! (p_output, p_input, nbits) {
@@ -281,9 +281,9 @@ Proof.
       set (nth_default Byte.x00 input (Z.to_nat (word.unsigned idx))) as b1.
       set (nth_default Byte.x00 input (Z.to_nat ((word.unsigned idx + 1) mod 2 ^ 64))) as b2.
 
-      assert (1 <= 2^w0 <= 2^8) by (split; [ZnWords | apply Z.pow_le_mono_r; lia]).
+      assert (1 <= 2^w <= 2^8) by (split; [ZnWords | apply Z.pow_le_mono_r; lia]).
 
-      assert ((Z.shiftl 1 (word.unsigned w0) mod 2 ^ 64 - 1) mod 2 ^ 64 = Z.ones (word.unsigned w0)) as ->.
+      assert ((Z.shiftl 1 (word.unsigned w) mod 2 ^ 64 - 1) mod 2 ^ 64 = Z.ones (word.unsigned w)) as ->.
       {
         rewrite Z.shiftl_1_l.
         (rewrite_strat (bottomup Z.mod_small)); try lia.
@@ -292,7 +292,7 @@ Proof.
       }
 
       set (word.unsigned i mod 2 ^ 3).
-      set ((le_combine input / 2 ^ word.unsigned i) mod 2 ^ word.unsigned w0).
+      set ((le_combine input / 2 ^ word.unsigned i) mod 2 ^ word.unsigned w).
 
       pose proof byte.unsigned_range b1.
       pose proof byte.unsigned_range b2.
@@ -405,9 +405,9 @@ Proof.
 
     set (nth_default Byte.x00 input (Z.to_nat (word.unsigned idx))) as b.
 
-    assert (1 <= 2^w0 <= 2^8) by (split; [ZnWords | apply Z.pow_le_mono_r; lia]).
+    assert (1 <= 2^w <= 2^8) by (split; [ZnWords | apply Z.pow_le_mono_r; lia]).
 
-    assert ((Z.shiftl 1 (word.unsigned w0) mod 2 ^ 64 - 1) mod 2 ^ 64 = Z.ones (word.unsigned w0)) as ->.
+    assert ((Z.shiftl 1 (word.unsigned w) mod 2 ^ 64 - 1) mod 2 ^ 64 = Z.ones (word.unsigned w)) as ->.
     {
       rewrite Z.shiftl_1_l.
       (rewrite_strat (bottomup Z.mod_small)); try lia.
@@ -416,7 +416,7 @@ Proof.
     }
 
     set (word.unsigned i mod 2 ^ 3).
-    set ((le_combine input / 2 ^ word.unsigned i) mod 2 ^ word.unsigned w0).
+    set ((le_combine input / 2 ^ word.unsigned i) mod 2 ^ word.unsigned w).
 
     pose proof byte.unsigned_range b.
     (rewrite_strat (bottomup Z.mod_small)); rewrite ?Z.shiftr_div_pow2; try ZnWords.
@@ -512,11 +512,10 @@ Proof.
   { eapply Z.gt_wf. }
   {
     repeat straightline.
-    cbv [w] in *.
     ssplit; try ecancel_assumption; try ZnWords.
   }
   {
-    repeat straightline; subst br; cbv [w] in *.
+    repeat straightline; subst br.
     {
       revert H7.
       case word.ltu_spec; intros;
@@ -719,7 +718,7 @@ Proof.
                 rewrite word.unsigned_of_Z_1, (Z.add_comm 1), <-Z.sub_move_r in H17 |
                 rewrite word.unsigned_of_Z_0, Z.add_0_l in H17
               ];
-              rewrite <-H17; cbv[v0 w] in *;
+              rewrite <-H17; cbv[v0] in *;
               rewrite !Z.pow_mul_r by lia; change (Z.pow 2 5) with 32;
               apply Z.sub_move_0_r.
 
@@ -792,7 +791,7 @@ Proof.
               constructor.
               {
                 cbv [x4 x].
-                case Z.ltb_spec; intros; case Z.eqb_spec; intros; try ZnWords; inversion H9; cbv [v0 w] in *;
+                case Z.ltb_spec; intros; case Z.eqb_spec; intros; try ZnWords; inversion H9; cbv [v0] in *;
                 set (word.of_Z (byte.unsigned w0)) as b0;
                 [
                   assert (word.unsigned (word.sub (word.add b0 x2) (word.of_Z 32)) = word.wrap (b0 + x2 - 32)) as -> by ZnWords |
@@ -848,7 +847,7 @@ Proof.
     rewrite length_cons, positional_cons.
     cbn [repeat].
     rewrite ?positional_cons.
-    cbv [w] in *.
+    cbv [id] in *.
     lia.
   }
 Qed.
@@ -896,7 +895,7 @@ Proof.
   rewrite Z.mod_divide by lia.
   intros [x].
   rewrite ?positional_cons in *.
-  cbv [w] in *.
+  cbv [id] in *.
   lia.
 Qed.
 
@@ -904,7 +903,7 @@ Lemma positive_shifted_out_of_limb_range :
   forall k, k > 0 -> 2 * 2^w * k > 2^w.
 Proof.
     intros.
-    cbv [w].
+    cbv [id].
     nia.
 Qed.
 
@@ -912,7 +911,7 @@ Lemma negative_shifted_out_of_limb_range :
   forall k, k < 0 -> 2 * 2^w * k < -2^w.
 Proof.
   intros.
-  cbv [w]. nia.
+  cbv [id]. nia.
 Qed.
 
 Lemma last_cons {T}: forall (x y : T) xs, last (x :: y :: xs) = last (y :: xs).
@@ -933,7 +932,7 @@ Proof.
       { rewrite positional_cons.
       apply negative_shifted_out_of_limb_range in H.
       apply Forall_inv in H0.
-      cbv [w] in *. better_lia.
+      cbv [id] in *. better_lia.
 Admitted.
 
 Fixpoint remove_trailing_zeroes (num : list Z) :=
@@ -1024,7 +1023,7 @@ S i - 1 = length num - i -2)%nat as -> by lia.
   remember ((nth (length num - i - 2) num 0)).
   change ((ListDef.skipn (length num - i - 1) num)) with
        ((skipn (length num - i - 1) num)).
-  cbv [w] in *. lia.
+  cbv [id] in *. lia.
 Qed.
 
 Lemma num_positive_suffix_non_negative: forall (num : list Z),
@@ -1089,7 +1088,7 @@ Proof.
     apply Forall_inv_tail in HC.
     apply IHnum in HC.
     rewrite length_cons.
-    cbv [w] in *.
+    cbv [id] in *.
     replace (Z.of_nat (S (length num))) with (Z.of_nat ((length num))+ 1) by lia.
     assert (a <= 16) by lia.
     replace (32 ^ (Z.of_nat (length num) + 1)) with (32 * 32 ^ (Z.of_nat (length num))).
@@ -1133,10 +1132,9 @@ S i - 1 = length num - i -2)%nat as -> by lia.
   remember ((nth (length num - i - 2) num 0)).
   change ((ListDef.skipn (length num - i - 1) num)) with
        ((skipn (length num - i - 1) num)).
-  cbv [w] in *.
+  cbv [id] in *.
 
-
+  admit.
   }
   (*todo try to prove this next*)
 Admitted.
-

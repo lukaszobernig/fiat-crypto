@@ -31,6 +31,8 @@ Local Open Scope Z_scope.
 Local Open Scope bool_scope.
 Local Open Scope list_scope.
 
+Require Import Crypto.Arithmetic.Signed.
+
 Require Import Crypto.Spec.WeierstrassCurve.
 Require Import Crypto.Curves.Weierstrass.Affine.
 Require Import Crypto.Curves.Weierstrass.AffineProofs.
@@ -690,60 +692,38 @@ Proof.
         rewrite Z.mul_comm, word.unsigned_of_Z_nowrap by lia.
         rewrite p256_mul_mod_n.
 
-        apply signed_limb_ineq_shifted_postivie_num.
-
+        unfold positional_signed_bytes in *.
+        rewrite <- skipn_map in *.
+        rewrite H32.
+        rewrite <- map_nth in *.
+        (* TODO these could probably be cleaned up earlier in the proof. *)
+        replace ((Z.to_nat (word.unsigned (word.sub i0 (word.of_Z 1))))) with ((Z.to_nat v - 1))%nat in * by ZnWords.
+        replace (byte.signed "000") with 0 in* by (cbn; ZnWords).
+        apply (fixed_window_no_doubling') with (xs := (firstn (Z.to_nat v - 1) (map byte.signed sscalar))); unfold p256_group_order in *.
+        all: try ZnWords.
+        { apply Forall_firstn. rewrite Forall_map. assumption. }
+        { apply Forall_skipn. rewrite Forall_map. assumption. }
+        { apply Forall_nth. { rewrite Forall_map. assumption. } rewrite map_length. lia. }
         {
-          rewrite H32, sscalar_parts.
-          subst i.
-          rewrite firstn_nth_skipn.
+          intros [?N1 ?N2].
+          apply H27; split.
           {
-            erewrite (Forall_nth_default' _ _ x00) in H9 by Decidable.vm_decide.
-            apply H9.
-          }
-          ZnWords.
-        }
-        {
-          rewrite Forall_map.
-          apply Forall_skipn.
-          apply H9.
-        }
-        {
-          epose proof num_positive_suffix_non_negative as O2.
-          split.
-          {
-            rewrite <- skipn_map.
-            assert (0 <= positional (2 ^ Recode.w) (ListDef.skipn (Z.to_nat v) (map byte.signed sscalar))); try lia.
-            apply O2.
-            {
-              apply Forall_map.
-              assumption.
-            }
-            { apply H8. }
-            {
-              rewrite map_length. lia.
-            }
-          }
-          {
-            admit. (*TODO use num_bounded_suffix_bounded once it finished *)
-          }
-        }
-        {
-          intros [HNP HNk].
-          apply H27.
-          split.
-          {
-            subst_to_affine.
-            unfold positional_signed_bytes.
-            rewrite HNP.
+            subst_to_affine. unfold positional.
+            rewrite N2.
             rewrite ScalarMult.scalarmult_0_l, ScalarMult.scalarmult_zero_r.
-            reflexivity.
-          }
-          {
-            subst_to_affine.
-            rewrite HNk.
+            reflexivity. }
+          { subst_to_affine.
+            rewrite H32, N1.
             rewrite ScalarMult.scalarmult_0_l.
             reflexivity.
           }
+        }
+        { rewrite ListUtil.app_cons_app_app. rewrite <- app_assoc.
+          replace ( skipn (Z.to_nat v) (map byte.signed sscalar)) with (skipn (S (Z.to_nat v - 1)) (map byte.signed sscalar)).
+          2: { f_equal. lia. }
+          rewrite firstn_nth_skipn.
+          { unfold positional in *. lia. }
+          { rewrite map_length. lia. }
         }
       }
 

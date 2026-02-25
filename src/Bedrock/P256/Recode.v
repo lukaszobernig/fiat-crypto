@@ -1,6 +1,7 @@
 Require Import ZArith Psatz Coq.Lists.List.
 Require Import bedrock2.NotationsCustomEntry.
 Import Syntax BinInt String List.ListNotations.
+Require Import Bedrock.P256.Specs.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
 Local Open Scope list_scope.
@@ -9,15 +10,6 @@ Local Open Scope list_scope.
   - cleanup
   - w as argument, add precond for possible ws
 *)
-
-(*Definition csel :=
-  func! (c, a, b) ~> r {
-    if c {
-      r = a
-    } else {
-      r = b
-    }
-  }.*)
 
 (*Definition ctime_lt :=
   func! (a, b) ~> r {
@@ -56,7 +48,7 @@ Definition recode :=
       while n {
         x = load1(p_words) + ci;
         unpack! ci = ctime_lt($(2^(w - 1)), x);
-        unpack! x = csel(ci, x - $(2^w), x);
+        unpack! x = br_cmov(ci, x - $(2^w), x);
         store1(p_words, x); p_words = p_words + $1;
         n = n - $1;
         $(cmd.unset "x")
@@ -79,20 +71,12 @@ End byte.
 
 Require Import bedrock2.BasicC64Semantics.
 
-(* TODO: csel should constrain the input to a single bit. *)
-Local Instance spec_of_csel : spec_of "csel" :=
-  fnspec! "csel" c a b ~> r,
-  { requires t m := True;
-    ensures T M :=
-      M = m /\ T = t /\
-      r = if word.unsigned c =? 0 then b else a
-  }.
-
 Local Instance spec_of_ctime_lt : spec_of "ctime_lt" :=
   fnspec! "ctime_lt" a b ~> r,
   { requires t m := True;
     ensures T M :=
       M = m /\ T = t /\
+      word.unsigned r < 2 /\
       r = if word.unsigned a <? word.unsigned b then word.of_Z 1 else word.of_Z 0
   }.
 
@@ -675,8 +659,8 @@ Proof.
         (* call ctime_lt *)
         straightline_call; trivial.
         repeat straightline.
-        (* call csel *)
-        straightline_call; trivial.
+        (* call br_cmov *)
+        straightline_call; trivial. clear H12.
         repeat straightline.
 
         exists words_rest; eexists _; exists (v - 1).

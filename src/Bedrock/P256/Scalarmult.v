@@ -224,8 +224,6 @@ Local Instance spec_of_p256_point_mul : spec_of "p256_point_mul" :=
 
 From coqutil Require Import Tactics.Tactics Macros.symmetry.
 
-Require Import Coq.Logic.Classical.
-
 Ltac destruct_iszero :=
   repeat match goal with H : iszero _ = _ |- _ =>
     unfold iszero in H;
@@ -331,7 +329,7 @@ Proof.
     destruct H11.
     {
       rewrite <-?Jacobian.iszero_iff.
-      apply or_not_and.
+      enough (~ Jacobian.iszero P \/ ~ Jacobian.iszero Q) by intuition.
       now left.
     }
     {

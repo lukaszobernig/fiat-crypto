@@ -62,7 +62,7 @@ Local Notation "xs $@ a" := (map.of_list_word_at a xs)
 
 Local Notation bytearray := (Array.array ptsto (word.of_Z 1)).
 
-Notation sizeof_point := 96%nat.
+Local Notation sizeof_point := 96%nat.
 
 From Crypto.Bedrock.P256 Require Import Jacobian Recode.
 
@@ -83,11 +83,11 @@ Definition p256_mul_by_pow2 :=
 (*Definition p256_set_zero :=
   func! (p_P) { (* set to [0,1,0] *) }.*)
 
-Notation w := Recode.w.
-Notation num_bits := 256%nat.
+Local Notation w := Recode.w.
+Local Notation num_bits := 256%nat.
 (* TODO: Infer this from p256 group order and w. *)
 (* Compute (Z.log2 p256_group_order) / w. *)
-Notation num_limbs := 52%nat.
+Local Notation num_limbs := 52%nat.
 
 (* Align helpers. *)
 Definition align_mask x mask := Z.land (x + mask) (Z.lnot mask).

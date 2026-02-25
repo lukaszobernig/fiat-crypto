@@ -224,11 +224,21 @@ Local Instance spec_of_p256_point_mul : spec_of "p256_point_mul" :=
 
 From coqutil Require Import Tactics.Tactics Macros.symmetry.
 
+Require Import Coq.Logic.Classical.
+
+Ltac destruct_iszero :=
+  repeat match goal with H : iszero _ = _ |- _ =>
+    unfold iszero in H;
+    let Hn := fresh in
+    destruct (Decidable.dec (Jacobian.iszero _)) as [_ | Hn] in H; try discriminate; clear H
+  end.
 
 Import memcpy.
-Lemma p256_point_add_vartime_if_doubling : program_logic_goal_for_function! p256_point_add_vartime_if_doubling.
+Lemma p256_point_add_vartime_if_doubling_alt_ok :
+  (* Use the alternative spec for p256_point_add_vartime_if_doubling. *)
+  let _ := spec_of_p256_point_add_vartime_if_doubling_alt in
+  program_logic_goal_for_function! p256_point_add_vartime_if_doubling.
 Proof.
-  cbv [spec_of_p256_point_add_vartime_if_doubling_alt].
   repeat straightline.
   straightline_call; repeat straightline. (*iszero*)
   { eexists. ecancel_assumption. }
@@ -259,8 +269,6 @@ Proof.
   { ecancel_assumption. }
   { rewrite ?repeat_length; trivial. }
   { rewrite length_point; trivial. }
-
-  rewrite ?word.and_xorm1_l, ?word.and_xorm1_r in *.
 
   subst x x0 x3.
   eexists; ssplit; repeat straightline. (* if ok *)
@@ -316,12 +324,24 @@ Proof.
       eexists; split; [ecancel_assumption|].
       rewrite Jacobian.eq_iff, Jacobian.to_affine_add, Jacobian.to_affine_add_inequal_nz_nz; trivial; reflexivity. } }
   {
-    (* TODO: show that !ok cannot happen. *)
+    rewrite <-word.unsigned_of_Z_0, !word.unsigned_inj_iff in H28 by exact _.
+    rewrite !word.lor_0_iff, !word.broadcast_0_iff in H28.
+    destruct H28 as [[HP HQ] Hx1].
+    destruct_iszero.
     destruct H11.
-    { admit. }
-    { admit. }
+    {
+      rewrite <-?Jacobian.iszero_iff.
+      apply or_not_and.
+      now left.
+    }
+    {
+       rewrite <-Jacobian.eq_iff.
+       pose proof (H20 H29 H28) as Hadd.
+       rewrite Hx1 in Hadd.
+       destruct Hadd as [[]|[]]; congruence.
+    }
   }
-Admitted.
+Qed.
 
 Lemma load1_sext_ok : program_logic_goal_for_function! load1_sext.
 Proof.
@@ -565,14 +585,12 @@ Proof.
   - destruct l. 1: assumption. inversion H. subst. simpl. apply IHn; eauto.
 Qed.
 
-Ltac hyp_containing a := match goal with H : context[a] |- _ => H end.
-
 Ltac subst_to_affine :=
-repeat match goal with |- context [Jacobian.to_affine ?P] =>
-           match goal with H : context [Jacobian.to_affine P] |- _ =>
-             rewrite H
-           end
-        end.
+  repeat match goal with |- context [Jacobian.to_affine ?P] =>
+    match goal with H : context [Jacobian.to_affine P] |- _ =>
+      rewrite H
+    end
+  end.
 
 Lemma p256_point_mul_signed_ok :
   (* Use the alternative spec for p256_point_add_vartime_if_doubling. *)
@@ -680,7 +698,7 @@ Proof.
 
       rename x0 into kP.
 
-      straightline_call. (* call p256_point_add_neq *)
+      straightline_call. (* call p256_point_add_vartime_if_doubling *)
 
       {
         seprewrite_in_by (Array.array1_iff_eq_of_list_word_at a1) H31 ltac:(lia).
@@ -895,7 +913,7 @@ Proof.
   rewrite firstn_all.
 
   reflexivity.
-Admitted.
+Qed.
 
 Lemma p256_point_mul_ok : program_logic_goal_for_function! p256_point_mul.
 Proof.

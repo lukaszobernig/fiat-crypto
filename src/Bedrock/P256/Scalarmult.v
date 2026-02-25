@@ -64,19 +64,6 @@ Notation sizeof_point := 96%nat.
 
 From Crypto.Bedrock.P256 Require Import Jacobian Recode.
 
-Definition p256_point_add_neq := func!(p_out, p_P, p_Q) {
-  unpack! zeroP = p256_point_iszero(p_P);
-  unpack! zeroQ = p256_point_iszero(p_Q);
-  stackalloc (3*32) as p_tmp;
-  unpack! ok = p256_point_add_nz_nz_neq(p_tmp, p_P, p_Q);
-  stackalloc (3*32) as p_sel;
-  br_memset(p_sel, $0, $(3*32));
-  br_memcxor(p_sel, p_tmp, $(3*32), ~zeroP & ~zeroQ);
-  br_memcxor(p_sel, p_P,   $(3*32), ~zeroP &  zeroQ);
-  br_memcxor(p_sel, p_Q,   $(3*32),  zeroP & ~zeroQ);
-  br_memcpy(p_out, p_sel, $(3*32))
-}.
-
 Definition p256_mul_by_pow2 :=
   func! (p_P, n) {
     while n {
@@ -131,7 +118,7 @@ Definition p256_point_mul_signed :=
       p256_mul_by_pow2(p_out, $w); (* OUT = [2^w]OUT *)
       unpack! k = load1_sext(p_sscalar + i); (* k is a recoded signed scalar limb. *)
       p256_get_signed_mult(p_kP, p_P, k); (* kP = [k]P *)
-      p256_point_add_neq(p_tmp, p_out, p_kP); (* TMP = OUT + kP *)
+      p256_point_add_vartime_if_doubling(p_tmp, p_out, p_kP); (* TMP = OUT + kP *)
       br_memcpy(p_out, p_tmp, $sizeof_point); (* OUT = TMP *)
 
       $(cmd.unset "k");
@@ -143,7 +130,7 @@ Definition p256_point_mul_signed :=
 Definition p256_point_mul :=
   func! (p_out, p_scalar, p_P) {
     stackalloc (align num_limbs 8) as p_sscalar; (* Space for limbs of unpacked and recoded scalar. *)
-    words_unpack(p_sscalar, p_scalar, $(256)); (* Unpack scalar into unsigned w-bit limbs. *)
+    words_unpack(p_sscalar, p_scalar, $num_bits); (* Unpack scalar into unsigned w-bit limbs. *)
     recode_wrap(p_sscalar, $num_limbs); (* Recode scalar into signed w-bit limbs. *)
     p256_point_mul_signed(p_out, p_sscalar, p_P) (* Multiply using signed multiplication. *)
   }.
@@ -157,8 +144,9 @@ Local Instance spec_of_load1_sext : spec_of "load1_sext" :=
     word.signed r = byte.signed b
   }.
 
-Local Instance spec_of_p256_point_add_neq : spec_of "p256_point_add_neq" :=
-  fnspec! "p256_point_add_neq" p_out p_P p_Q / out (P Q : point) R,
+(* Alternative spec for p256_point_add_vartime_if_doubling that disallows equal inputs if either is nonzero. *)
+Local Instance spec_of_p256_point_add_vartime_if_doubling_alt : spec_of "p256_point_add_vartime_if_doubling" :=
+  fnspec! "p256_point_add_vartime_if_doubling" p_out p_P p_Q / out (P Q : point) R,
   { requires t m :=
       m =* out$@p_out * P$@p_P * Q$@p_Q * R /\
       length out = length P /\
@@ -170,8 +158,6 @@ Local Instance spec_of_p256_point_add_neq : spec_of "p256_point_add_neq" :=
       M =* out$@p_out * P$@p_P * Q$@p_Q * R /\
       Jacobian.eq out (Jacobian.add P Q)
   }.
-
-Print spec_of_p256_point_add_neq.
 
 Local Instance spec_of_p256_set_zero : spec_of "p256_set_zero" :=
   fnspec! "p256_set_zero" p_P / P R,
@@ -235,6 +221,105 @@ Local Instance spec_of_p256_point_mul : spec_of "p256_point_mul" :=
   }.
 
 From coqutil Require Import Tactics.Tactics Macros.symmetry.
+
+
+Import memcpy.
+Lemma p256_point_add_vartime_if_doubling : program_logic_goal_for_function! p256_point_add_vartime_if_doubling.
+Proof.
+  cbv [spec_of_p256_point_add_vartime_if_doubling_alt].
+  repeat straightline.
+  straightline_call; repeat straightline. (*iszero*)
+  { eexists. ecancel_assumption. }
+  straightline_call; repeat straightline. (*iszero*)
+  { eexists. ecancel_assumption. }
+  (* stackalloc *)
+  seprewrite_in_by (@Array.array1_iff_eq_of_list_word_at) H9 ltac:(lia).
+  straightline_call; ssplit. (*add*)
+  { ecancel_assumption. }
+  { rewrite length_point; lia. }
+  repeat straightline.
+  straightline_call; repeat straightline (* br_declassify *).
+  (* stackalloc *)
+  seprewrite_in_by (@Array.array1_iff_eq_of_list_word_at) H18 ltac:(lia).
+  straightline_call; ssplit. (* memset *)
+  { ecancel_assumption. }
+  { ZnWords.ZnWords. }
+  repeat straightline.
+  straightline_call; repeat straightline; ssplit (* memcxor *).
+  { ecancel_assumption. }
+  { rewrite ?repeat_length; trivial. }
+  { rewrite H19, length_point; trivial. }
+  straightline_call; repeat straightline; ssplit (* memcxor *).
+  { ecancel_assumption. }
+  { rewrite ?repeat_length; trivial. }
+  { rewrite length_point; trivial. }
+  straightline_call; repeat straightline; ssplit (* memcxor *).
+  { ecancel_assumption. }
+  { rewrite ?repeat_length; trivial. }
+  { rewrite length_point; trivial. }
+
+  rewrite ?word.and_xorm1_l, ?word.and_xorm1_r in *.
+
+  subst x x0 x3.
+  eexists; ssplit; repeat straightline. (* if ok *)
+  { straightline_call; repeat straightline; ssplit (* memcpy *).
+    { ecancel_assumption. }
+    { rewrite H10, length_point; trivial. }
+    { trivial. }
+    { clear; ZnWords.ZnWords. }
+    repeat straightline.
+    (* stackdealloc *)
+    progress repeat seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at) H43 ltac:(rewrite ?length_point in *; lia || ZnWords.ZnWords).
+    progress repeat match type of H43 with context [Array.array ptsto _ _ (point.to_bytes ?x)] =>
+    unique pose proof (length_point x) end.
+    assert (Datatypes.length x6 = 96%nat) by ZnWords.ZnWords.
+    repeat straightline.
+    progress repeat seprewrite_in_by (@Array.array1_iff_eq_of_list_word_at) H43 ltac:(rewrite ?length_point in *; lia || ZnWords.ZnWords).
+
+    rewrite <-word.unsigned_of_Z_0, !word.unsigned_inj_iff in H28 by exact _.
+    rewrite !word.lor_0_iff, !word.broadcast_0_iff in H28.
+    destruct (iszero P) eqn:HP, (iszero Q) eqn:HQ in *; try intuition discriminate;
+      repeat match goal with
+             | H : _ = _ -> _ |- _ => specialize (H eq_refl)
+             | H : ?x = ?y -> _ |- _ => assert (x = y -> False) as _ by inversion 1; clear H
+             end;
+      subst x4; subst x5; subst x6;
+      rewrite ?Byte.map_xor_0_l in * by (rewrite ?length_point; ZnWords.ZnWords).
+    { (* 0 + 0 *)
+      eexists (exist _ (0,0,0)%F I); split.
+      { use_sep_assumption; cancel. reflexivity. }
+      apply Decidable.dec_bool, Jacobian.iszero_iff in HP.
+      apply Decidable.dec_bool, Jacobian.iszero_iff in HQ.
+      rewrite Jacobian.eq_iff, Jacobian.to_affine_add, HP, HQ.
+      exact I. }
+    { (* 0 + Q *)
+      eexists; split. { ecancel_assumption. }
+      apply Decidable.dec_bool, Jacobian.iszero_iff in HP.
+      rewrite Jacobian.eq_iff, Jacobian.to_affine_add, HP.
+      symmetry.
+      eapply Hierarchy.left_identity. }
+    { (* P + 0 *)
+      eexists; split. { ecancel_assumption. }
+      apply Decidable.dec_bool, Jacobian.iszero_iff in HQ.
+      rewrite Jacobian.eq_iff, Jacobian.to_affine_add, HQ.
+      symmetry.
+      unshelve eapply Hierarchy.right_identity. }
+    { (* nz + nz' *)
+      rewrite <-Bool.not_true_iff_false in HP, HQ.
+      (* Decidable.dec_iff? *)
+      cbv [iszero] in HP, HQ; case Decidable.dec in HP; case Decidable.dec in HQ; try congruence.
+      destruct (H20 ltac:(trivial) ltac:(trivial)) as [HE|]; [|intuition fail].
+      case HE as [_ (?&HE)].
+      repeat straightline_cleanup.
+      eexists; split; [ecancel_assumption|].
+      rewrite Jacobian.eq_iff, Jacobian.to_affine_add, Jacobian.to_affine_add_inequal_nz_nz; trivial; reflexivity. } }
+  {
+    (* TODO: show that !ok cannot happen. *)
+    destruct H11.
+    { admit. }
+    { admit. }
+  }
+Admitted.
 
 Lemma load1_sext_ok : program_logic_goal_for_function! load1_sext.
 Proof.
@@ -487,7 +572,10 @@ repeat match goal with |- context [Jacobian.to_affine ?P] =>
            end
         end.
 
-Lemma p256_point_mul_signed_ok : program_logic_goal_for_function! p256_point_mul_signed.
+Lemma p256_point_mul_signed_ok :
+  (* Use the alternative spec for p256_point_add_vartime_if_doubling. *)
+  let _ := spec_of_p256_point_add_vartime_if_doubling_alt in
+  program_logic_goal_for_function! p256_point_mul_signed.
 Proof.
   repeat straightline.
 

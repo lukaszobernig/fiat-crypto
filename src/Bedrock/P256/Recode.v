@@ -11,10 +11,10 @@ Local Open Scope list_scope.
   - w as argument, add precond for possible ws
 *)
 
-(*Definition ctime_lt :=
+Definition ctime_ltu_byte :=
   func! (a, b) ~> r {
-    r = (a - b - $1) >> $63
-  }.*)
+    r = (a - b) >> $63
+  }.
 
 Definition index_bits :=
   func! (p_input, nbits, i, w) ~> r {
@@ -47,7 +47,7 @@ Definition recode :=
   func! (p_words, ci, n) ~> ci {
       while n {
         x = load1(p_words) + ci;
-        unpack! ci = ctime_lt($(2^(w - 1)), x);
+        unpack! ci = ctime_ltu_byte($(2^(w - 1)), x);
         unpack! x = br_cmov(ci, x - $(2^w), x);
         store1(p_words, x); p_words = p_words + $1;
         n = n - $1;
@@ -71,13 +71,15 @@ End byte.
 
 Require Import bedrock2.BasicC64Semantics.
 
-Local Instance spec_of_ctime_lt : spec_of "ctime_lt" :=
-  fnspec! "ctime_lt" a b ~> r,
-  { requires t m := True;
+Local Instance spec_of_ctime_ltu_byte : spec_of "ctime_ltu_byte" :=
+  fnspec! "ctime_ltu_byte" a b ~> r,
+  { requires t m :=
+      0 <= word.unsigned a < 2^8 /\
+      0 <= word.unsigned b < 2^8;
     ensures T M :=
       M = m /\ T = t /\
       word.unsigned r < 2 /\
-      r = if word.unsigned a <? word.unsigned b then word.of_Z 1 else word.of_Z 0
+      r = if word.ltu a b then word.of_Z 1 else word.of_Z 0
   }.
 
 Import ProgramLogic.Coercions.
@@ -155,7 +157,7 @@ Local Notation bytearray := (Array.array ptsto (word.of_Z 1)).
         Forall (fun b => (0 <= byte.unsigned b < 2^w)) words /\ 0 <= ci <= 1;
       ensures T M := exists WORDS,
         M =* bytearray p_words WORDS * R /\ length WORDS = word.unsigned n :>Z /\
-        T = t /\ (* We have WORDS, CARRY_OUT = recode(words, carry_in) *)
+        T = t /\
         positional_signed_bytes (2^w) WORDS + 2^(w*n)*CO = word.unsigned ci + positional_bytes (2^w) words /\
         Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) WORDS /\ 0 <= CO <= 1
     }.
@@ -176,6 +178,12 @@ Local Notation bytearray := (Array.array ptsto (word.of_Z 1)).
 
 Require Import bedrock2.ZnWords Coq.ZArith.ZArith Lia.
 From coqutil Require Import Tactics.Tactics Word.Properties Datatypes.List.
+
+Lemma ctime_ltu_byte_ok : program_logic_goal_for_function! ctime_ltu_byte.
+Proof.
+  repeat straightline.
+  destruct (word.ltu_spec a b); split; ZnWords.
+Qed.
 
 Lemma bytearray_load_of_sep addr (addr' : word) n (values : list byte) R m
   (Hsep : (sep (bytearray addr values) R m))
@@ -657,7 +665,8 @@ Proof.
         cbn [array] in * |-.
         repeat straightline.
         (* call ctime_lt *)
-        straightline_call; trivial.
+        straightline_call.
+        { apply Forall_inv in H9. ZnWords. }
         repeat straightline.
         (* call br_cmov *)
         straightline_call; trivial. clear H12.
@@ -678,7 +687,7 @@ Proof.
             lia.
           }
           { inversion H9. trivial. }
-          all: subst x; case Z.ltb_spec; ZnWords.
+          all: subst x; case word.ltu_spec; ZnWords.
         }
         {
           split.
@@ -695,9 +704,9 @@ Proof.
             {
               cbn [positional_signed_bytes positional_bytes positional map fold_right].
               cbv [x4 x].
-              case Z.ltb_spec; intros; case Z.eqb_spec; intros; try ZnWords;
+              case word.ltu_spec; intros; case Z.eqb_spec; intros; try ZnWords;
               revert H13; cbv[x positional_signed_bytes positional_bytes];
-              case Z.ltb_spec; intros; try ZnWords;
+              case word.ltu_spec; intros; try ZnWords;
               [
                 rewrite word.unsigned_of_Z_1, (Z.add_comm 1), <-Z.sub_move_r in H17 |
                 rewrite word.unsigned_of_Z_0, Z.add_0_l in H17
@@ -775,7 +784,7 @@ Proof.
               constructor.
               {
                 cbv [x4 x].
-                case Z.ltb_spec; intros; case Z.eqb_spec; intros; try ZnWords; inversion H9; cbv [v0] in *;
+                case word.ltu_spec; intros; case Z.eqb_spec; intros; try ZnWords; inversion H9; cbv [v0] in *;
                 set (word.of_Z (byte.unsigned w0)) as b0;
                 [
                   assert (word.unsigned (word.sub (word.add b0 x2) (word.of_Z 32)) = word.wrap (b0 + x2 - 32)) as -> by ZnWords |
@@ -786,8 +795,7 @@ Proof.
                 cbv [byte.swrap word.swrap];
                 subst b0;
                 rewrite word.unsigned_of_Z_nowrap by (pose proof byte.unsigned_range w0; lia);
-                rewrite Z.mod_small by lia;
-                ZnWords.
+                rewrite Z.mod_small by lia; ZnWords.
               }
               trivial.
             }

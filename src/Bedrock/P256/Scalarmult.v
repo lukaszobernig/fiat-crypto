@@ -117,8 +117,8 @@ Definition p256_point_mul_signed :=
 Definition p256_point_mul :=
   func! (p_out, p_scalar, p_P) {
     stackalloc (align num_limbs 8) as p_sscalar; (* Space for limbs of unpacked and recoded scalar. *)
-    words_unpack(p_sscalar, p_scalar, $num_bits); (* Unpack scalar into unsigned w-bit limbs. *)
-    recode_wrap(p_sscalar, $num_limbs); (* Recode scalar into signed w-bit limbs. *)
+    limbs_unpack(p_sscalar, p_scalar, $num_bits); (* Unpack scalar into unsigned w-bit limbs. *)
+    signed_recode(p_sscalar, $num_limbs); (* Recode scalar into signed w-bit limbs. *)
     p256_point_mul_signed(p_out, p_sscalar, p_P) (* Multiply using signed multiplication. *)
   }.
 
@@ -771,8 +771,8 @@ Proof.
     lia. }
   rewrite H12 in H2.
   set (word.add a (word.of_Z (Z.of_nat 52))) in H2.
-  straightline_call. (* call words_unpack *)
-  { (* Solve words_unpack assumptions. *)
+  straightline_call. (* call limbs_unpack *)
+  { (* Solve limbs_unpack assumptions. *)
     ssplit; try ecancel_assumption; try ZnWords.
     rewrite word.unsigned_of_Z_nowrap by lia.
     cbv [p256_group_order] in *.

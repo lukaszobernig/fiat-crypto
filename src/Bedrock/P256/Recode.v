@@ -29,10 +29,10 @@ Definition index_bits :=
     r = t & (($1 << w) - $1)
   }.
 
-(* Word size (nonzero). *)
+(* Limb size (nonzero). *)
 Notation w := 5.
 
-Definition words_unpack :=
+Definition limbs_unpack :=
   func! (p_output, p_input, nbits) {
     i = $0;
     while i < nbits {
@@ -43,21 +43,21 @@ Definition words_unpack :=
     }
   }.
 
-Definition recode :=
-  func! (p_words, ci, n) ~> ci {
+Definition signed_recode_carry :=
+  func! (p_limbs, ci, n) ~> ci {
       while n {
-        x = load1(p_words) + ci;
+        x = load1(p_limbs) + ci;
         unpack! ci = ctime_ltu_byte($(2^(w - 1)), x);
         unpack! x = br_cmov(ci, x - $(2^w), x);
-        store1(p_words, x); p_words = p_words + $1;
+        store1(p_limbs, x); p_limbs = p_limbs + $1;
         n = n - $1;
         $(cmd.unset "x")
       }
     }.
 
-Definition recode_wrap :=
-  func! (p_words, n) {
-    unpack! _c = recode(p_words, $0, n)
+Definition signed_recode :=
+  func! (p_limbs, n) {
+    unpack! _c = signed_recode_carry(p_limbs, $0, n)
   }.
 
 From bedrock2 Require Import WeakestPrecondition ProgramLogic.
@@ -134,8 +134,8 @@ Local Notation bytearray := (Array.array ptsto (word.of_Z 1)).
         r = le_combine input / 2^i mod 2^w :>Z
     }.
 
-#[export] Instance spec_of_words_unpack : spec_of "words_unpack" :=
-  fnspec! "words_unpack" (p_output p_input nbits : word) / output input R,
+#[export] Instance spec_of_limbs_unpack : spec_of "limbs_unpack" :=
+  fnspec! "limbs_unpack" (p_output p_input nbits : word) / output input R,
     { requires t m :=
         m =* bytearray p_output output * bytearray p_input input * R /\
         8 * (length input - 1) < nbits <= 8 * length input /\
@@ -150,30 +150,30 @@ Local Notation bytearray := (Array.array ptsto (word.of_Z 1)).
         le_combine input = positional_bytes (2^w) OUTPUT
     }.
 
-#[export] Instance spec_of_recode : spec_of "recode" :=
-  fnspec! "recode" (p_words ci n : word) / words R ~> CO,
+#[export] Instance spec_of_signed_recode_carry : spec_of "signed_recode_carry" :=
+  fnspec! "signed_recode_carry" (p_limbs ci n : word) / limbs R ~> CO,
     { requires t m :=
-        m =* bytearray p_words words * R /\ length words = word.unsigned n :>Z /\
-        Forall (fun b => (0 <= byte.unsigned b < 2^w)) words /\ 0 <= ci <= 1;
-      ensures T M := exists WORDS,
-        M =* bytearray p_words WORDS * R /\ length WORDS = word.unsigned n :>Z /\
+        m =* bytearray p_limbs limbs * R /\ length limbs = word.unsigned n :>Z /\
+        Forall (fun b => (0 <= byte.unsigned b < 2^w)) limbs /\ 0 <= ci <= 1;
+      ensures T M := exists LIMBS,
+        M =* bytearray p_limbs LIMBS * R /\ length LIMBS = word.unsigned n :>Z /\
         T = t /\
-        positional_signed_bytes (2^w) WORDS + 2^(w*n)*CO = word.unsigned ci + positional_bytes (2^w) words /\
-        Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) WORDS /\ 0 <= CO <= 1
+        positional_signed_bytes (2^w) LIMBS + 2^(w*n)*CO = word.unsigned ci + positional_bytes (2^w) limbs /\
+        Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) LIMBS /\ 0 <= CO <= 1
     }.
 
-#[export] Instance spec_of_recode_wrap : spec_of "recode_wrap" :=
-  fnspec! "recode_wrap" (p_words n : word) / words R,
+#[export] Instance spec_of_signed_recode : spec_of "signed_recode" :=
+  fnspec! "signed_recode" (p_limbs n : word) / limbs R,
   { requires t m :=
-      m =* bytearray p_words words * R /\ length words = word.unsigned n :>Z /\
-      Forall (fun b => (0 <= byte.unsigned b < 2^w)) words /\
-      2 * (positional_bytes (2^w) words) < 2^(w*n) /\
+      m =* bytearray p_limbs limbs * R /\ length limbs = word.unsigned n :>Z /\
+      Forall (fun b => (0 <= byte.unsigned b < 2^w)) limbs /\
+      2 * (positional_bytes (2^w) limbs) < 2^(w*n) /\
       -2^(w*n) <= positional (2^w) (repeat (-2^w + 2) (Z.to_nat n));
-    ensures T M := exists WORDS,
-      M =* bytearray p_words WORDS * R /\ length WORDS = word.unsigned n :>Z /\
+    ensures T M := exists LIMBS,
+      M =* bytearray p_limbs LIMBS * R /\ length LIMBS = word.unsigned n :>Z /\
       T = t /\
-      positional_signed_bytes (2^w) WORDS = positional_bytes (2^w) words /\
-      Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) WORDS
+      positional_signed_bytes (2^w) LIMBS = positional_bytes (2^w) limbs /\
+      Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) LIMBS
   }.
 
 Require Import bedrock2.ZnWords Coq.ZArith.ZArith Lia.
@@ -468,7 +468,7 @@ Proof.
   ZnWords.
 Qed.
 
-Lemma unpack_ok : program_logic_goal_for_function! words_unpack.
+Lemma limbs_unpack_ok : program_logic_goal_for_function! limbs_unpack.
 Proof.
   repeat straightline.
 
@@ -626,7 +626,7 @@ Proof.
   rewrite <-byte_swrap_wrap, byte_wrap_word_wrap, byte_swrap_wrap; reflexivity.
 Qed.
 
-Lemma recode_ok : program_logic_goal_for_function! recode.
+Lemma signed_recode_carry_ok : program_logic_goal_for_function! signed_recode_carry.
 Proof.
   repeat straightline.
 
@@ -634,16 +634,16 @@ Proof.
     (* types of ghost variables*) (HList.polymorphic_list.cons _
                                   (HList.polymorphic_list.cons _
                                    HList.polymorphic_list.nil))
-    (* program variables *) (["p_words";"ci";"n"] : list String.string))
-    (fun v words R t m p_words ci n => PrimitivePair.pair.mk (* precondition *)
+    (* program variables *) (["p_limbs";"ci";"n"] : list String.string))
+    (fun v limbs R t m p_limbs ci n => PrimitivePair.pair.mk (* precondition *)
       (v = word.unsigned n /\
-      m =* bytearray p_words words * R /\ length words = word.unsigned n :>Z /\
-      Forall (fun b => (0 <= byte.unsigned b < 2^w)) words /\ 0 <= ci <= 1)
-    (fun           T M P_WORDS (CO : word) N => T = t /\ (* postcondition *)
-      exists WORDS,
-      M =* bytearray p_words WORDS * R /\ length WORDS = word.unsigned n :>Z /\
-      positional_signed_bytes (2^w) WORDS + 2^(w*n)*CO = word.unsigned ci + positional_bytes (2^w) words /\
-      Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) WORDS /\ 0 <= CO <= 1))
+      m =* bytearray p_limbs limbs * R /\ length limbs = word.unsigned n :>Z /\
+      Forall (fun b => (0 <= byte.unsigned b < 2^w)) limbs /\ 0 <= ci <= 1)
+    (fun           T M P_LIMBS (CO : word) N => T = t /\ (* postcondition *)
+      exists LIMBS,
+      M =* bytearray p_limbs LIMBS * R /\ length LIMBS = word.unsigned n :>Z /\
+      positional_signed_bytes (2^w) LIMBS + 2^(w*n)*CO = word.unsigned ci + positional_bytes (2^w) limbs /\
+      Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) LIMBS /\ 0 <= CO <= 1))
     (fun n m => 0 <= n < m) (* well_founded relation *)
     _ _ _ _ _ _ _);
   Loops.loop_simpl.
@@ -657,9 +657,9 @@ Proof.
   {
     repeat straightline.
     {
-      clear dependent words; rename x into words.
-      (* Take the first element from the word list. *)
-      destruct words as [| w0 words_rest].
+      clear dependent limbs; rename x into limbs.
+      (* Take the first element from the limbs list. *)
+      destruct limbs as [| w0 limbs_rest].
       { rewrite List.length_nil in *; lia. }
       {
         cbn [array] in * |-.
@@ -672,7 +672,7 @@ Proof.
         straightline_call; trivial. clear H12.
         repeat straightline.
 
-        exists words_rest; eexists _; exists (v - 1).
+        exists limbs_rest; eexists _; exists (v - 1).
         repeat straightline.
         {
           ssplit.
@@ -751,7 +751,7 @@ Proof.
                 subst n.
                 rewrite word.unsigned_sub_nowrap by ZnWords.
                 rewrite <-H8; cbn [length]; rewrite ?Nat2Z.inj_succ, ?Z.pow_succ_r by lia.
-                assert ((Z.succ (Z.of_nat (length words_rest)) - word.unsigned (word.of_Z 1)) = (Z.of_nat (length words_rest))) as -> by ZnWords.
+                assert ((Z.succ (Z.of_nat (length limbs_rest)) - word.unsigned (word.of_Z 1)) = (Z.of_nat (length limbs_rest))) as -> by ZnWords.
                 ZnWords.
               }
               {
@@ -767,7 +767,7 @@ Proof.
                   subst n.
                   rewrite word.unsigned_sub_nowrap by ZnWords.
                   rewrite <-H8; cbn [length]; rewrite ?Nat2Z.inj_succ, ?Z.pow_succ_r by lia.
-                  assert ((Z.succ (Z.of_nat (length words_rest)) - word.unsigned (word.of_Z 1)) = (Z.of_nat (length words_rest))) as -> by ZnWords.
+                  assert ((Z.succ (Z.of_nat (length limbs_rest)) - word.unsigned (word.of_Z 1)) = (Z.of_nat (length limbs_rest))) as -> by ZnWords.
 
                   rewrite word.unsigned_of_Z.
                   cbv [word.wrap].
@@ -844,10 +844,10 @@ Proof.
   }
 Qed.
 
-Lemma recode_wrap_ok : program_logic_goal_for_function! recode_wrap.
+Lemma signed_recode_ok : program_logic_goal_for_function! signed_recode.
 Proof.
   repeat straightline.
-  straightline_call. (* call recode *)
+  straightline_call. (* call signed_recode_carry *)
   { ssplit; try ecancel_assumption; trivial; ZnWords. }
   repeat straightline.
   eexists _.

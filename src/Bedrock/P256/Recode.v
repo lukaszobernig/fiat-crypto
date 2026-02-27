@@ -154,12 +154,14 @@ Local Notation bytearray := (Array.array ptsto (word.of_Z 1)).
   fnspec! "signed_recode_carry" (p_limbs ci n : word) / limbs R ~> CO,
     { requires t m :=
         m =* bytearray p_limbs limbs * R /\ length limbs = word.unsigned n :>Z /\
-        Forall (fun b => (0 <= byte.unsigned b < 2^w)) limbs /\ 0 <= ci <= 1;
+        Forall (fun b => (0 <= byte.unsigned b < 2^w)) limbs /\
+        0 <= ci <= 1;
       ensures T M := exists LIMBS,
         M =* bytearray p_limbs LIMBS * R /\ length LIMBS = word.unsigned n :>Z /\
         T = t /\
         positional_signed_bytes (2^w) LIMBS + 2^(w*n)*CO = word.unsigned ci + positional_bytes (2^w) limbs /\
-        Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) LIMBS /\ 0 <= CO <= 1
+        Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) LIMBS /\
+        0 <= CO <= 1
     }.
 
 #[export] Instance spec_of_signed_recode : spec_of "signed_recode" :=
@@ -493,9 +495,7 @@ Proof.
       p_input = P_INPUT /\
       nbits = NBITS /\ (* inside loop = output *)
       Forall (fun b => (0 <= byte.unsigned b < 2^w)) OUTPUT /\
-      le_combine input / 2^i = positional_bytes (2^w) OUTPUT
-      (* le_combine input = le_combine input mod 2^i + positional_bytes (2^w) OUTPUT *)
-      ))
+      le_combine input / 2^i = positional_bytes (2^w) OUTPUT))
     (fun n m => m < n <= nbits + w) (* well_founded relation *)
     _ _ _ _ _ _ _);
   Loops.loop_simpl.
@@ -712,33 +712,33 @@ Proof.
                 rewrite word.unsigned_of_Z_0, Z.add_0_l in H17
               ];
               rewrite <-H17; cbv[v0] in *;
-              rewrite !Z.pow_mul_r by lia; change (Z.pow 2 5) with 32;
+              rewrite !Z.pow_mul_r by lia;
               apply Z.sub_move_0_r.
 
-              (* TODO: ring_simplify stalls Qed so we so some manual simplifications. *)
+              (* TODO: ring_simplify stalls Qed so we do some manual simplifications. *)
 
               {
-                assert (32 * (positional 32 (map byte.signed x8) + 32 ^ word.unsigned n * word.unsigned x6 - 1) =
-                32 * positional 32 (map byte.signed x8) + 32 * 32 ^ word.unsigned n * word.unsigned x6 - 32) as -> by lia.
-                set (32 * positional 32 (map byte.signed x8)) as cancel.
-                assert (byte.signed (byte.of_Z (word.unsigned (word.sub (word.add (word.of_Z (byte.unsigned w0)) x2) (word.of_Z 32)))) + cancel + 32 ^ word.unsigned x3 * word.unsigned x6 - (word.unsigned x2 + (byte.unsigned w0 + (cancel + 32 * 32 ^ word.unsigned n * word.unsigned x6 - 32))) =
-                byte.signed (byte.of_Z (word.unsigned (word.sub (word.add (word.of_Z (byte.unsigned w0)) x2) (word.of_Z 32)))) + 32 ^ word.unsigned x3 * word.unsigned x6 - 32 * word.unsigned x6 * 32 ^ word.unsigned n - word.unsigned x2 - byte.unsigned w0 + 32) as -> by lia.
+                assert ((2 ^ w) * (positional (2 ^ w) (map byte.signed x8) + (2 ^ w) ^ word.unsigned n * word.unsigned x6 - 1) =
+                (2 ^ w) * positional (2 ^ w) (map byte.signed x8) + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6 - 2 ^ w) as -> by lia.
+                set ((2 ^ w) * positional (2 ^ w) (map byte.signed x8)) as cancel.
+                assert (byte.signed (byte.of_Z (word.unsigned (word.sub (word.add (word.of_Z (byte.unsigned w0)) x2) (word.of_Z 32)))) + cancel + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (word.unsigned x2 + (byte.unsigned w0 + (cancel + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6 - 2 ^ w))) =
+                byte.signed (byte.of_Z (word.unsigned (word.sub (word.add (word.of_Z (byte.unsigned w0)) x2) (word.of_Z 32)))) + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (2 ^ w) * word.unsigned x6 * (2 ^ w) ^ word.unsigned n - word.unsigned x2 - byte.unsigned w0 + 2 ^ w) as -> by lia.
                 shelve.
               }
 
               {
-                assert (32 * (positional 32 (map byte.signed x8) + 32 ^ word.unsigned n * word.unsigned x6) =
-                32 * positional 32 (map byte.signed x8) + 32 * 32 ^ word.unsigned n * word.unsigned x6) as -> by lia.
-                set (32 * positional 32 (map byte.signed x8)) as cancel.
-                assert (byte.signed (byte.of_Z (word.unsigned (word.add (word.of_Z (byte.unsigned w0)) x2))) + cancel + 32 ^ word.unsigned x3 * word.unsigned x6 - (word.unsigned x2 + (byte.unsigned w0 + (cancel + 32 * 32 ^ word.unsigned n * word.unsigned x6))) =
-                byte.signed (byte.of_Z (word.unsigned (word.add (word.of_Z (byte.unsigned w0)) x2))) + 32 ^ word.unsigned x3 * word.unsigned x6 - 32 * word.unsigned x6 * 32 ^ word.unsigned n - word.unsigned x2 - byte.unsigned w0) as -> by lia.
+                assert ((2 ^ w) * (positional (2 ^ w) (map byte.signed x8) + (2 ^ w) ^ word.unsigned n * word.unsigned x6) =
+                (2 ^ w) * positional (2 ^ w) (map byte.signed x8) + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6) as -> by lia.
+                set ((2 ^ w) * positional (2 ^ w) (map byte.signed x8)) as cancel.
+                assert (byte.signed (byte.of_Z (word.unsigned (word.add (word.of_Z (byte.unsigned w0)) x2))) + cancel + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (word.unsigned x2 + (byte.unsigned w0 + (cancel + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6))) =
+                byte.signed (byte.of_Z (word.unsigned (word.add (word.of_Z (byte.unsigned w0)) x2))) + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (2 ^ w) * word.unsigned x6 * (2 ^ w) ^ word.unsigned n - word.unsigned x2 - byte.unsigned w0) as -> by lia.
                 shelve.
               }
 
               Unshelve.
               {
                 set (word.of_Z (byte.unsigned w0)) as b0.
-                assert (word.unsigned (word.sub (word.add b0 x2) (word.of_Z 32)) = word.wrap (b0 + x2 - 32)) as -> by ZnWords.
+                assert (word.unsigned (word.sub (word.add b0 x2) (word.of_Z 32)) = word.wrap (b0 + x2 - 2 ^ w)) as -> by ZnWords.
 
                 cbv [byte.signed].
                 rewrite byte.unsigned_of_Z, byte_swrap_wrap, byte_swrap_word_wrap.
@@ -787,7 +787,7 @@ Proof.
                 case word.ltu_spec; intros; case Z.eqb_spec; intros; try ZnWords; inversion H9; cbv [v0] in *;
                 set (word.of_Z (byte.unsigned w0)) as b0;
                 [
-                  assert (word.unsigned (word.sub (word.add b0 x2) (word.of_Z 32)) = word.wrap (b0 + x2 - 32)) as -> by ZnWords |
+                  assert (word.unsigned (word.sub (word.add b0 x2) (word.of_Z 32)) = word.wrap (b0 + x2 - 2 ^ w)) as -> by ZnWords |
                   assert (word.unsigned (word.add b0 x2) = word.wrap (b0 + x2)) as -> by ZnWords
                 ];
                 cbv [byte.signed];
@@ -829,19 +829,15 @@ Lemma positional_bounded (l : list Z) L U :
   positional (2^w) (List.repeat L n) <= 2 * (positional (2^w) l) <= positional (2^w) (List.repeat U n).
 Proof.
   induction 1.
-  {
-    subst n.
+  { subst n.
     rewrite length_nil, ?positional_nil.
-    lia.
-  }
-  {
-    subst n.
+    lia. }
+  { subst n.
     rewrite length_cons, positional_cons.
     cbn [repeat].
     rewrite ?positional_cons.
     cbv [id] in *.
-    lia.
-  }
+    lia. }
 Qed.
 
 Lemma signed_recode_ok : program_logic_goal_for_function! signed_recode.
@@ -853,20 +849,15 @@ Proof.
   eexists _.
   ssplit; try ecancel_assumption; trivial.
   assert (word.unsigned x <> 1).
-  {
-    intros Hx.
+  { intros Hx.
     rewrite word.unsigned_of_Z_0, Z.add_0_l, Hx, Z.mul_1_r in H9.
-
     epose proof positional_bounded (map byte.signed x0) (- 2 ^ w + 2) (2 ^ w) ltac:(apply Forall_map; assumption).
     rewrite length_map in H5.
     progress fold (positional_signed_bytes (2 ^ w) x0) in H5.
-
     assert (2*positional_signed_bytes (2 ^ w) x0 < -2^(w*n)) by lia.
     assert (positional (2 ^ w) (repeat (- 2 ^ w + 2) (length x0)) < -2 ^ (w * n)) by lia.
-
     rewrite <-H7, Nat2Z.id in H4.
     rewrite <-H7 in H13.
-    lia.
-  }
+    lia. }
   ZnWords.
 Qed.

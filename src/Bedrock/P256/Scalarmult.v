@@ -573,7 +573,7 @@ Proof.
     repeat straightline.
     ssplit; try ecancel_assumption; trivial.
     { subst i.
-      assert (Z.to_nat (word.unsigned (word.of_Z 52)) = 52%nat) as -> by ZnWords.
+      assert (Z.to_nat (word.unsigned (word.of_Z _)) = num_limbs) as -> by ZnWords.
       rewrite List.skipn_all by ZnWords.
       cbn [positional_signed_bytes positional fold_right map].
       rewrite ScalarMult.scalarmult_0_l.
@@ -714,17 +714,17 @@ Proof.
       ) as -> by ZnWords.
       repeat rewrite ?ScalarMult.scalarmult_assoc, <-?ScalarMult.scalarmult_add_l.
       Morphisms.f_equiv.
-      rewrite (Z.pow_mul_r 2 5 (word.unsigned i0)) by lia.
-      assert ((2 ^ 5) ^ word.unsigned i0 = (2 ^ 5) ^ Z.of_nat (Z.to_nat i0)) as -> by (f_equal; ZnWords).
+      rewrite (Z.pow_mul_r 2 w (word.unsigned i0)) by lia.
+      assert ((2 ^ w) ^ word.unsigned i0 = (2 ^ w) ^ Z.of_nat (Z.to_nat i0)) as -> by (f_equal; ZnWords).
       rewrite <-positional_firstn_skipn by listZnWords.
       rewrite <-map_nth.
-      rewrite (Z.pow_mul_r 2 5 (word.unsigned (word.sub i0 (word.of_Z 1)))) by ZnWords.
-      assert ((2 ^ 5) ^ word.unsigned (word.sub i0 (word.of_Z 1)) = (2 ^ 5) ^ Z.of_nat (Z.to_nat i0 - 1)) as -> by (f_equal; ZnWords).
+      rewrite (Z.pow_mul_r 2 w (word.unsigned (word.sub i0 (word.of_Z 1)))) by ZnWords.
+      assert ((2 ^ w) ^ word.unsigned (word.sub i0 (word.of_Z 1)) = (2 ^ w) ^ Z.of_nat (Z.to_nat i0 - 1)) as -> by (f_equal; ZnWords).
       rewrite Z.mul_add_distr_r.
       rewrite <-Z.mul_assoc.
       assert (
-        2 ^ 5 * (2 ^ 5) ^ Z.of_nat (Z.to_nat (word.unsigned i0) - 1) =
-        (2 ^ 5) ^ Z.of_nat (Z.to_nat (word.unsigned i0))
+        2 ^ w * (2 ^ w) ^ Z.of_nat (Z.to_nat (word.unsigned i0) - 1) =
+        (2 ^ w) ^ Z.of_nat (Z.to_nat (word.unsigned i0))
       ) as ->.
       { rewrite Pow.Z.pow_mul_base by ZnWords.
         f_equal.
@@ -752,7 +752,7 @@ Proof.
   rewrite Hierarchy.left_identity.
   cbv [i].
   rewrite word.unsigned_of_Z_nowrap by lia.
-  assert (Z.to_nat 52 = length sscalar) as -> by lia.
+  assert (Z.to_nat _ = length sscalar) as -> by lia.
   rewrite firstn_all.
   reflexivity.
 Qed.
@@ -761,16 +761,16 @@ Lemma p256_point_mul_ok : program_logic_goal_for_function! p256_point_mul.
 Proof.
   repeat straightline.
   (* Split stack into space for sscalar and padding. *)
-  rewrite <-(firstn_skipn 52 stack) in H2.
-  set (sscalar := ListDef.firstn 52 stack) in H2.
-  set (padding := ListDef.skipn 52 stack) in H2.
+  rewrite <-(firstn_skipn num_limbs stack) in H2.
+  set (sscalar := ListDef.firstn num_limbs stack) in H2.
+  set (padding := ListDef.skipn num_limbs stack) in H2.
   seprewrite_in Array.bytearray_append H2.
-  assert (length sscalar = 52%nat).
+  assert (length sscalar = num_limbs).
   { unfold sscalar.
     rewrite length_firstn.
     lia. }
   rewrite H12 in H2.
-  set (word.add a (word.of_Z (Z.of_nat 52))) in H2.
+  set (word.add a (word.of_Z (Z.of_nat _))) in H2.
   straightline_call. (* call limbs_unpack *)
   { (* Solve limbs_unpack assumptions. *)
     ssplit; try ecancel_assumption; try ZnWords.
@@ -783,7 +783,7 @@ Proof.
     ssplit; try ecancel_assumption; trivial.
     { ZnWords. }
     { rewrite <-H18.
-      change (5 * word.unsigned (word.of_Z 52)) with (260).
+      rewrite word.unsigned_of_Z_nowrap by lia.
       cbv [p256_group_order] in *.
       lia. }
     { Decidable.vm_decide. } }

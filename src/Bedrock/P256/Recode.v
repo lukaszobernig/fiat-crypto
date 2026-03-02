@@ -1,19 +1,14 @@
 Require Import ZArith Psatz Coq.Lists.List.
-Require Import bedrock2.NotationsCustomEntry.
+From bedrock2 Require Import NotationsCustomEntry wsize.
 Import Syntax BinInt String List.ListNotations.
 Require Import Bedrock.P256.Specs.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
 Local Open Scope list_scope.
 
-(* TODO:
-  - cleanup
-  - w as argument, add precond for possible ws
-*)
-
 Definition ctime_ltu_byte :=
   func! (a, b) ~> r {
-    r = (a - b) >> $63
+    r = (a - b) >> $wmask
   }.
 
 Definition index_bits :=
@@ -29,6 +24,7 @@ Definition index_bits :=
     r = t & (($1 << w) - $1)
   }.
 
+(* TODO: w as argument, add precond for possible ws *)
 (* Limb size (nonzero). *)
 Notation w := 5.
 
@@ -184,6 +180,8 @@ From coqutil Require Import Tactics.Tactics Word.Properties Datatypes.List.
 Lemma ctime_ltu_byte_ok : program_logic_goal_for_function! ctime_ltu_byte.
 Proof.
   repeat straightline.
+  cbv [r Semantics.interp_op1].
+  rewrite eval_wmask'.
   destruct (word.ltu_spec a b); split; ZnWords.
 Qed.
 

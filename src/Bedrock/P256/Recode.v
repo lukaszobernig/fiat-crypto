@@ -2,10 +2,12 @@ Require Import ZArith Psatz Coq.Lists.List.
 From bedrock2 Require Import NotationsCustomEntry wsize.
 Import Syntax BinInt String List.ListNotations.
 Require Import Bedrock.P256.Specs.
+
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
 Local Open Scope list_scope.
 
+(* TODO: I called it _byte because we only need a,b in [0,2^8) in the spec. *)
 Definition ctime_ltu_byte :=
   func! (a, b) ~> r {
     r = (a - b) >> $wmask
@@ -25,7 +27,7 @@ Definition index_bits :=
   }.
 
 (* Limb size (nonzero). *)
-Notation w := 5.
+Local Notation w := 5.
 
 Definition limbs_unpack :=
   func! (p_output, p_input, nbits) {
@@ -54,6 +56,7 @@ Definition signed_recode_carry :=
 Definition signed_recode :=
   func! (p_limbs, n) {
     unpack! _c = signed_recode_carry(p_limbs, $0, n)
+    (* TODO: Emit (void)_c; to fix compiler warning/error. *)
   }.
 
 From bedrock2 Require Import WeakestPrecondition ProgramLogic.
@@ -66,17 +69,6 @@ Definition signed (b : byte) : Z := swrap (byte.unsigned b).
 End byte.
 
 Require Import bedrock2.BasicC64Semantics.
-
-Local Instance spec_of_ctime_ltu_byte : spec_of "ctime_ltu_byte" :=
-  fnspec! "ctime_ltu_byte" a b ~> r,
-  { requires t m :=
-      0 <= word.unsigned a < 2^8 /\
-      0 <= word.unsigned b < 2^8;
-    ensures T M :=
-      M = m /\ T = t /\
-      word.unsigned r < 2 /\
-      r = if word.ltu a b then word.of_Z 1 else word.of_Z 0
-  }.
 
 Import ProgramLogic.Coercions.
 Set Printing Coercions.
@@ -114,6 +106,17 @@ Lemma positional_bytes_cons B (h : byte) (t : list byte) :
 Proof. constructor. Qed.
 
 Local Notation bytearray := (Array.array ptsto (word.of_Z 1)).
+
+#[export] Instance spec_of_ctime_ltu_byte : spec_of "ctime_ltu_byte" :=
+  fnspec! "ctime_ltu_byte" a b ~> r,
+  { requires t m :=
+      0 <= word.unsigned a < 2^8 /\
+      0 <= word.unsigned b < 2^8;
+    ensures T M :=
+      M = m /\ T = t /\
+      word.unsigned r < 2 /\
+      r = if word.ltu a b then word.of_Z 1 else word.of_Z 0
+  }.
 
 #[export] Instance spec_of_index_bits : spec_of "index_bits" :=
   fnspec! "index_bits" (p_input nbits i w : word) / input ~> r,
@@ -217,11 +220,11 @@ Proof.
   ring.
 Qed.
 
-Ltac bitwise_setup k :=
+#[local] Ltac bitwise_setup k :=
   apply Z.bits_inj'; intros k **;
   repeat rewrite ?Z.land_spec, ?Z.lor_spec, ?Z.shiftl_spec, ?Z.testbit_mod_pow2, ?bitblast.Z.div_pow2_bits' by ZnWords.
 
-Ltac bitwise_solve solver :=
+#[local] Ltac bitwise_solve solver :=
   repeat match goal with |- context _g[Z.ltb ?a ?b] => progress (
     case (Z.ltb_spec a b) as [];
     repeat rewrite ?Bool.andb_true_l, ?Bool.andb_true_r, ?Bool.andb_false_l, ?Bool.andb_false_r,

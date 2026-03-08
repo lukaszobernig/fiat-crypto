@@ -515,15 +515,6 @@ Proof.
   lia.
 Qed.
 
-(* TODO: remove once available in coqutil. *)
-Lemma Forall_skipn {A} (P: A -> Prop): forall (n: nat) (l: list A),
-    Forall P l -> Forall P (skipn n l).
-Proof.
-  induction n; intros.
-  - simpl. assumption.
-  - destruct l. 1: assumption. inversion H. subst. simpl. apply IHn; eauto.
-Qed.
-
 Ltac subst_to_affine :=
   repeat match goal with |- context [Jacobian.to_affine ?P] =>
     match goal with H : context [Jacobian.to_affine P] |- _ =>

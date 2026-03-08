@@ -137,8 +137,6 @@ Local Instance spec_of_p256_point_add_vartime_if_doubling_alt : spec_of "p256_po
   { requires t m :=
       m =* out$@p_out * P$@p_P * Q$@p_Q * R /\
       length out = length P /\
-      (* In our algorithm, at the start, either we keep adding zero to zero OR
-         we add two distinct points. *)
       (~ (W.eq (Jacobian.to_affine P) W.zero /\ W.eq (Jacobian.to_affine Q) W.zero) ->
         ~ W.eq (Jacobian.to_affine P) (Jacobian.to_affine Q));
     ensures T M := T = t /\ exists (out : point),

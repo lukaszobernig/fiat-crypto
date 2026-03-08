@@ -595,38 +595,39 @@ Proof.
               ];
               rewrite <-H17; cbv[v0] in *;
               rewrite !Z.pow_mul_r by lia;
-              apply Z.sub_move_0_r.
+              apply Z.sub_move_0_r;
+              set (positional (2 ^ w) (map byte.signed x8)).
 
               (* TODO: ring_simplify stalls Qed so we perform some manual simplifications. *)
               {
                 assert (
-                  (2 ^ w) * (positional (2 ^ w) (map byte.signed x8) + (2 ^ w) ^ word.unsigned n * word.unsigned x6 - 1) =
-                  (2 ^ w) * positional (2 ^ w) (map byte.signed x8) + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6 - 2 ^ w
+                  (2 ^ w) * (z + (2 ^ w) ^ word.unsigned n * word.unsigned x6 - 1) =
+                  (2 ^ w) * z + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6 - 2 ^ w
                 ) as -> by lia.
-                set ((2 ^ w) * positional (2 ^ w) (map byte.signed x8)) as cancel.
+                set ((2 ^ w) * z) as cancel.
                 set (byte.signed (byte.of_Z (word.unsigned (word.sub (word.add (word.of_Z (byte.unsigned w0)) x2) (word.of_Z _))))).
                 assert (
-                  z + cancel + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (word.unsigned x2 + (byte.unsigned w0 + (cancel + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6 - 2 ^ w))) =
-                  z + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (2 ^ w) * word.unsigned x6 * (2 ^ w) ^ word.unsigned n - word.unsigned x2 - byte.unsigned w0 + 2 ^ w
+                  z0 + cancel + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (word.unsigned x2 + (byte.unsigned w0 + (cancel + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6 - 2 ^ w))) =
+                  z0 + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (2 ^ w) * word.unsigned x6 * (2 ^ w) ^ word.unsigned n - word.unsigned x2 - byte.unsigned w0 + 2 ^ w
                 ) as -> by lia.
                 shelve.
               }
               {
                 assert (
-                  (2 ^ w) * (positional (2 ^ w) (map byte.signed x8) + (2 ^ w) ^ word.unsigned n * word.unsigned x6) =
-                  (2 ^ w) * positional (2 ^ w) (map byte.signed x8) + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6
+                  (2 ^ w) * (z + (2 ^ w) ^ word.unsigned n * word.unsigned x6) =
+                  (2 ^ w) * z + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6
                 ) as -> by lia.
-                set ((2 ^ w) * positional (2 ^ w) (map byte.signed x8)) as cancel.
+                set ((2 ^ w) * z) as cancel.
                 set (byte.signed (byte.of_Z (word.unsigned (word.add (word.of_Z (byte.unsigned w0)) x2)))).
                 assert (
-                  z + cancel + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (word.unsigned x2 + (byte.unsigned w0 + (cancel + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6))) =
-                  z + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (2 ^ w) * word.unsigned x6 * (2 ^ w) ^ word.unsigned n - word.unsigned x2 - byte.unsigned w0
+                  z0 + cancel + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (word.unsigned x2 + (byte.unsigned w0 + (cancel + (2 ^ w) * (2 ^ w) ^ word.unsigned n * word.unsigned x6))) =
+                  z0 + (2 ^ w) ^ word.unsigned x3 * word.unsigned x6 - (2 ^ w) * word.unsigned x6 * (2 ^ w) ^ word.unsigned n - word.unsigned x2 - byte.unsigned w0
                 ) as -> by lia.
                 shelve.
               }
 
               Unshelve.
-              { subst z.
+              { subst z0.
                 set (word.of_Z (byte.unsigned w0)) as b0.
                 assert (word.unsigned (word.sub (word.add b0 x2) (word.of_Z _)) = word.wrap (b0 + x2 - 2 ^ w)) as -> by ZnWords.
                 cbv [byte.signed].
@@ -644,7 +645,7 @@ Proof.
                   (Z.of_nat (length limbs_rest))
                 ) as -> by ZnWords.
                 ZnWords. }
-              { subst z.
+              { subst z0.
                 cbv [byte.signed].
                 rewrite byte.unsigned_of_Z, byte_swrap_wrap.
                 rewrite word.unsigned_add_nowrap.
@@ -696,7 +697,7 @@ Proof.
   eexists _.
   ssplit; try ecancel_assumption; trivial.
 Qed.
-(* TODO: Print Assumptions recode_ok returns subproofs. *)
+(* TODO: Print Assumptions signed_recode_carry_ok returns subproofs. *)
 
 Lemma positional_bounded (l : list Z) L U :
   let n := length l in

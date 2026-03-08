@@ -24,7 +24,6 @@ Definition index_bits :=
     r = t & (($1 << w) - $1)
   }.
 
-(* TODO: w as argument, add precond for possible ws *)
 (* Limb size (nonzero). *)
 Notation w := 5.
 
@@ -44,6 +43,7 @@ Definition signed_recode_carry :=
       while n {
         x = load1(p_limbs) + ci;
         unpack! ci = ctime_ltu_byte($(2^(w - 1)), x);
+        (* TODO: move spec to different location. *)
         unpack! x = br_cmov(ci, x - $(2^w), x);
         store1(p_limbs, x); p_limbs = p_limbs + $1;
         n = n - $1;

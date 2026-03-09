@@ -20,9 +20,11 @@ Tactics
 UniquePose
 Word.Properties
 memcpy.
+From bedrock2 Require Import wsize.
 Require Import Coq.Lists.List.
 Require Import Coq.Classes.Morphisms.
 Import ProgramLogic.Coercions.
+From coqutil Require Import Tactics.Tactics Macros.symmetry.
 
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
@@ -59,12 +61,13 @@ Local Notation "xs $@ a" := (map.of_list_word_at a xs)
 
 Local Notation bytearray := (Array.array ptsto (word.of_Z 1)).
 
+(* TODO: should this be global somewhere? *)
 Local Notation sizeof_point := 96%nat.
 
 Local Notation w := Recode.w.
 Local Notation num_bits := 256%nat.
 (* TODO: Infer this from p256 group order and w. *)
-(* Compute (Z.log2 p256_group_order) / w. *)
+(* Compute (Z.log2 p256_group_order) / w + 1. *)
 Local Notation num_limbs := 52%nat.
 
 (* Align helpers. *)
@@ -77,11 +80,9 @@ Definition align x a := align_mask x (a - 1).
 (*Definition p256_set_zero :=
   func! (p_P) { (* set to [0,1,0] *) }.*)
 
-(* TODO: use words' bitwidth. *)
-Local Notation word_bitwidth := 64%nat.
 Definition load1_sext :=
   func! (p_b) ~> r {
-    r = (load1(p_b) << $(word_bitwidth - 8)) .>> $(word_bitwidth - 8)
+    r = (load1(p_b) << ($wsize - $8)) .>> ($wsize - $8)
   }.
 
 Definition p256_mul_by_pow2 :=
@@ -122,28 +123,7 @@ Definition p256_point_mul :=
     p256_point_mul_signed(p_out, p_sscalar, p_P) (* Multiply using signed multiplication. *)
   }.
 
-Local Instance spec_of_load1_sext : spec_of "load1_sext" :=
-  fnspec! "load1_sext" p_b / b R ~> r,
-  { requires t m :=
-    m =* ptsto p_b b * R;
-    ensures T M :=
-    M =* ptsto p_b b * R /\ T = t /\
-    word.signed r = byte.signed b
-  }.
-
-(* Alternative spec for p256_point_add_vartime_if_doubling that disallows equal inputs if either is nonzero. *)
-Local Instance spec_of_p256_point_add_vartime_if_doubling_alt : spec_of "p256_point_add_vartime_if_doubling" :=
-  fnspec! "p256_point_add_vartime_if_doubling" p_out p_P p_Q / out (P Q : point) R,
-  { requires t m :=
-      m =* out$@p_out * P$@p_P * Q$@p_Q * R /\
-      length out = length P /\
-      (~ (W.eq (Jacobian.to_affine P) W.zero /\ W.eq (Jacobian.to_affine Q) W.zero) ->
-        ~ W.eq (Jacobian.to_affine P) (Jacobian.to_affine Q));
-    ensures T M := T = t /\ exists (out : point),
-      M =* out$@p_out * P$@p_P * Q$@p_Q * R /\
-      Jacobian.eq out (Jacobian.add P Q)
-  }.
-
+(* TODO: use existing. *)
 Local Instance spec_of_p256_set_zero : spec_of "p256_set_zero" :=
   fnspec! "p256_set_zero" p_P / P R,
   { requires t m :=
@@ -153,17 +133,6 @@ Local Instance spec_of_p256_set_zero : spec_of "p256_set_zero" :=
     W.eq (Jacobian.to_affine Q) (W.zero) /\
     T = t
   }.
-
-Local Instance spec_of_p256_mul_by_pow2 : spec_of "p256_mul_by_pow2" :=
-  fnspec! "p256_mul_by_pow2" p_P n / (P : point) R,
-  { requires t m :=
-    m =* P$@p_P * R;
-    ensures T M := exists (Q : point),
-    M =* Q$@p_P * R /\
-    W.eq (Jacobian.to_affine Q) (W.mul (2^n) (Jacobian.to_affine P)) /\
-    T = t
-  }.
-
 Local Instance spec_of_p256_get_signed_mult : spec_of "p256_get_signed_mult" :=
   fnspec! "p256_get_signed_mult" (p_out p_P k : word) / out (P : point) R,
   { requires t m :=
@@ -175,7 +144,39 @@ Local Instance spec_of_p256_get_signed_mult : spec_of "p256_get_signed_mult" :=
     T = t
   }.
 
-Local Instance spec_of_p256_point_mul_signed : spec_of "p256_point_mul_signed" :=
+#[export] Instance spec_of_load1_sext : spec_of "load1_sext" :=
+  fnspec! "load1_sext" p_b / b R ~> r,
+  { requires t m :=
+    m =* ptsto p_b b * R;
+    ensures T M :=
+    M =* ptsto p_b b * R /\ T = t /\
+    word.signed r = byte.signed b
+  }.
+
+(* Alternative spec for p256_point_add_vartime_if_doubling that disallows equal inputs if either is nonzero. *)
+#[export] Instance spec_of_p256_point_add_vartime_if_doubling_alt : spec_of "p256_point_add_vartime_if_doubling" :=
+  fnspec! "p256_point_add_vartime_if_doubling" p_out p_P p_Q / out (P Q : point) R,
+  { requires t m :=
+      m =* out$@p_out * P$@p_P * Q$@p_Q * R /\
+      length out = length P /\
+      (~ (W.eq (Jacobian.to_affine P) W.zero /\ W.eq (Jacobian.to_affine Q) W.zero) ->
+        ~ W.eq (Jacobian.to_affine P) (Jacobian.to_affine Q));
+    ensures T M := T = t /\ exists (out : point),
+      M =* out$@p_out * P$@p_P * Q$@p_Q * R /\
+      Jacobian.eq out (Jacobian.add P Q)
+  }.
+
+#[export] Instance spec_of_p256_mul_by_pow2 : spec_of "p256_mul_by_pow2" :=
+  fnspec! "p256_mul_by_pow2" p_P n / (P : point) R,
+  { requires t m :=
+    m =* P$@p_P * R;
+    ensures T M := exists (Q : point),
+    M =* Q$@p_P * R /\
+    W.eq (Jacobian.to_affine Q) (W.mul (2^n) (Jacobian.to_affine P)) /\
+    T = t
+  }.
+
+#[export] Instance spec_of_p256_point_mul_signed : spec_of "p256_point_mul_signed" :=
   fnspec! "p256_point_mul_signed" (p_out p_sscalar p_P : word) / out sscalar (P : point) R,
   { requires t m :=
     m =* out$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\
@@ -188,7 +189,7 @@ Local Instance spec_of_p256_point_mul_signed : spec_of "p256_point_mul_signed" :
       T = t
   }.
 
-Local Instance spec_of_p256_point_mul : spec_of "p256_point_mul" :=
+#[export] Instance spec_of_p256_point_mul : spec_of "p256_point_mul" :=
   fnspec! "p256_point_mul" (p_out p_scalar p_P : word) / out scalar (P : point) R,
   { requires t m :=
     m =* out$@p_out * bytearray p_scalar scalar * P$@p_P * R /\
@@ -201,7 +202,22 @@ Local Instance spec_of_p256_point_mul : spec_of "p256_point_mul" :=
       T = t
   }.
 
-From coqutil Require Import Tactics.Tactics Macros.symmetry.
+Lemma load1_sext_ok : program_logic_goal_for_function! load1_sext.
+Proof.
+  repeat straightline.
+  ssplit; try ecancel_assumption; trivial.
+  cbv [r Semantics.interp_op1].
+  rewrite eval_wsize'.
+  rewrite <-word.ring_morph_sub.
+  rewrite word.signed_srs_nowrap by ZnWords.
+  rewrite word.signed_eq_swrap_unsigned.
+  rewrite word.unsigned_slu_shamtZ by lia.
+  rewrite ?word.unsigned_of_Z_nowrap; try (pose proof byte.unsigned_range b; lia).
+  rewrite Z.shiftr_div_pow2, Z.shiftl_mul_pow2 by lia.
+  cbv [byte.signed word.wrap byte.swrap word.swrap].
+  PreOmega.Z.div_mod_to_equations.
+  lia.
+Qed.
 
 Lemma iszero_false_decidable P : iszero P = false -> ~ Jacobian.iszero P.
 Proof.
@@ -309,21 +325,6 @@ Proof.
       pose proof (H20 HP HQ) as Hadd; rewrite Hx1zero in Hadd.
       destruct Hadd as [[]|[]]; congruence. }
   }
-Qed.
-
-Lemma load1_sext_ok : program_logic_goal_for_function! load1_sext.
-Proof.
-  repeat straightline.
-  ssplit; try ecancel_assumption; trivial.
-  subst r.
-  rewrite word.signed_srs_nowrap by ZnWords.
-  rewrite word.signed_eq_swrap_unsigned.
-  rewrite word.unsigned_slu_shamtZ by lia.
-  rewrite ?word.unsigned_of_Z_nowrap; try (pose proof byte.unsigned_range b; lia).
-  rewrite Z.shiftr_div_pow2, Z.shiftl_mul_pow2 by lia.
-  cbv [byte.signed word.wrap byte.swrap word.swrap].
-  PreOmega.Z.div_mod_to_equations.
-  lia.
 Qed.
 
 Lemma p256_mul_by_pow2_ok : program_logic_goal_for_function! p256_mul_by_pow2.
@@ -515,7 +516,7 @@ Proof.
   lia.
 Qed.
 
-Ltac subst_to_affine :=
+Local Ltac subst_to_affine :=
   repeat match goal with |- context [Jacobian.to_affine ?P] =>
     match goal with H : context [Jacobian.to_affine P] |- _ =>
       rewrite H

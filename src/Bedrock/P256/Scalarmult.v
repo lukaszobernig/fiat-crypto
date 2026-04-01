@@ -26,17 +26,17 @@ Require Import Coq.Classes.Morphisms.
 Import ProgramLogic.Coercions.
 From coqutil Require Import Tactics.Tactics Macros.symmetry.
 
-Local Open Scope string_scope.
-Local Open Scope Z_scope.
-Local Open Scope bool_scope.
-Local Open Scope list_scope.
+#[local] Open Scope string_scope.
+#[local] Open Scope Z_scope.
+#[local] Open Scope bool_scope.
+#[local] Open Scope list_scope.
 
 Require Import Crypto.Arithmetic.Signed.
 Require Import Crypto.Spec.WeierstrassCurve.
 Require Import Crypto.Curves.Weierstrass.Affine.
 Require Import Crypto.Curves.Weierstrass.AffineProofs.
 Require Import Crypto.Curves.Weierstrass.P256.
-From Crypto.Bedrock.P256 Require Import Jacobian Recode.
+From Crypto.Bedrock.P256 Require Import Jacobian RecodeSpecs RecodeProofs.
 
 Module W.
   (* HACK: Rewrite W.eq * W.zero hangs with Proper (Logic.eq ==> W.eq ==> W.eq),
@@ -56,19 +56,20 @@ End W.
 Existing Instance W.commutative_group.
 Existing Instance W.Proper_mul.
 
-Local Notation "xs $@ a" := (map.of_list_word_at a xs)
+#[local] Notation "xs $@ a" := (map.of_list_word_at a xs)
   (at level 10, format "xs $@ a").
 
-Local Notation bytearray := (Array.array ptsto (word.of_Z 1)).
+#[local] Notation bytearray := (Array.array ptsto (word.of_Z 1)).
 
 (* TODO: should this be global somewhere? *)
-Local Notation sizeof_point := 96%nat.
+#[local] Notation sizeof_point := 96%nat.
 
-Local Notation w := Recode.w.
-Local Notation num_bits := 256%nat.
+(* Limb size (nonzero). *)
+#[local] Notation w := 5.
+#[local] Notation num_bits := 256%nat.
 (* TODO: Infer this from p256 group order and w. *)
 (* Compute (Z.log2 p256_group_order) / w + 1. *)
-Local Notation num_limbs := 52%nat.
+#[local] Notation num_limbs := 52%nat.
 
 (* Align helpers. *)
 Definition align_mask x mask := Z.land (x + mask) (Z.lnot mask).
@@ -118,13 +119,13 @@ Definition p256_point_mul_signed :=
 Definition p256_point_mul :=
   func! (p_out, p_scalar, p_P) {
     stackalloc (align num_limbs 8) as p_sscalar; (* Space for limbs of unpacked and recoded scalar. *)
-    limbs_unpack(p_sscalar, p_scalar, $num_bits); (* Unpack scalar into unsigned w-bit limbs. *)
+    decompose_to_limbs(p_sscalar, p_scalar, $num_bits); (* Unpack scalar into unsigned w-bit limbs. *)
     signed_recode(p_sscalar, $num_limbs); (* Recode scalar into signed w-bit limbs. *)
     p256_point_mul_signed(p_out, p_sscalar, p_P) (* Multiply using signed multiplication. *)
   }.
 
 (* TODO: use existing. *)
-Local Instance spec_of_p256_set_zero : spec_of "p256_set_zero" :=
+#[local] Instance spec_of_p256_set_zero : spec_of "p256_set_zero" :=
   fnspec! "p256_set_zero" p_P / P R,
   { requires t m :=
     m =* P$@p_P * R;
@@ -133,7 +134,8 @@ Local Instance spec_of_p256_set_zero : spec_of "p256_set_zero" :=
     W.eq (Jacobian.to_affine Q) (W.zero) /\
     T = t
   }.
-Local Instance spec_of_p256_get_signed_mult : spec_of "p256_get_signed_mult" :=
+
+#[local] Instance spec_of_p256_get_signed_mult : spec_of "p256_get_signed_mult" :=
   fnspec! "p256_get_signed_mult" (p_out p_P k : word) / out (P : point) R,
   { requires t m :=
     m =* out$@p_out * P$@p_P * R /\ length out = length P;
@@ -772,7 +774,7 @@ Proof.
   { (* Solve recode_wrap assumptions. *)
     ssplit; try ecancel_assumption; trivial.
     { ZnWords. }
-    { rewrite <-H18.
+    { rewrite H18.
       rewrite word.unsigned_of_Z_nowrap by lia.
       cbv [p256_group_order] in *.
       lia. }

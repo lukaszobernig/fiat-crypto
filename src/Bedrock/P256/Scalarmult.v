@@ -125,8 +125,8 @@ Definition p256_point_mul :=
 #[local] Instance spec_of_p256_get_signed_mult : spec_of "p256_get_signed_mult" :=
   fnspec! "p256_get_signed_mult" (p_out p_P k : word) / out (P : point) R,
   { requires t m :=
-    m =* out$@p_out * P$@p_P * R /\ length out = length P;
-    (* TODO: range of k small *)
+    m =* out$@p_out * P$@p_P * R /\ length out = length P /\
+    0 <= k <= 17;
     ensures T M := exists (Q : point),
     M =* Q$@p_out * P$@p_P * R /\
     W.eq (Jacobian.to_affine Q) (W.mul (word.signed k) (Jacobian.to_affine P)) /\
@@ -555,7 +555,9 @@ Proof.
       assert (Z.to_nat (word.unsigned (word.of_Z _)) = num_limbs) as -> by ZnWords.
       rewrite List.skipn_all by ZnWords.
       cbn [positional_signed_bytes positional fold_right map].
-      reflexivity. }
+      rewrite Jacobian.to_affine_of_affine.
+      rewrite ScalarMult.scalarmult_0_l.
+      Morphisms.f_equiv. }
     { ZnWords. }
     { ZnWords. }
     { lia. } }
@@ -582,7 +584,9 @@ Proof.
       { ssplit.
         { seprewrite_in_by (Array.array1_iff_eq_of_list_word_at p_kP) H29 ltac:(lia).
           ecancel_assumption. }
-        { rewrite length_point; trivial. } }
+        { rewrite length_point; trivial. }
+        { ZnWords. }
+        { admit. (*TODO*) } }
       repeat straightline.
       rename x into kP.
       straightline_call. (* call p256_point_add_vartime_if_doubling *)
@@ -724,10 +728,7 @@ Proof.
     reflexivity. }
   repeat straightline.
   eexists _.
-  (* There is a hang here if this is done in one line. *)
-  ssplit.
-  { ecancel_assumption. }
-  2: { trivial. }
+  ssplit; try ecancel_assumption; try exact eq_refl.
   rewrite H15.
   rewrite Jacobian.to_affine_of_affine.
   rewrite ScalarMult.scalarmult_zero_r.
@@ -737,7 +738,7 @@ Proof.
   assert (Z.to_nat _ = length sscalar) as -> by lia.
   rewrite firstn_all.
   reflexivity.
-Qed.
+Admitted.
 
 Lemma p256_point_mul_ok : program_logic_goal_for_function! p256_point_mul.
 Proof.

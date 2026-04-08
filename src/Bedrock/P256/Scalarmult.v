@@ -126,7 +126,7 @@ Definition p256_point_mul :=
   fnspec! "p256_get_signed_mult" (p_out p_P k : word) / out (P : point) R,
   { requires t m :=
     m =* out$@p_out * P$@p_P * R /\ length out = length P /\
-    0 <= k <= 17;
+    -17 < (word.signed k) < 17;
     ensures T M := exists (Q : point),
     M =* Q$@p_out * P$@p_P * R /\
     W.eq (Jacobian.to_affine Q) (W.mul (word.signed k) (Jacobian.to_affine P)) /\
@@ -581,12 +581,17 @@ Proof.
       repeat straightline.
       rename x into k.
       straightline_call. (* call p256_get_signed_mult *)
-      { ssplit.
+      { split; [|split].
         { seprewrite_in_by (Array.array1_iff_eq_of_list_word_at p_kP) H29 ltac:(lia).
           ecancel_assumption. }
         { rewrite length_point; trivial. }
-        { ZnWords. }
-        { admit. (*TODO*) } }
+        { rewrite H31.
+          apply Forall_nth.
+          { eapply Forall_impl; [| exact H9].
+            intros a Hbounds.
+            cbv [id] in Hbounds.
+            lia. }
+          ZnWords. } }
       repeat straightline.
       rename x into kP.
       straightline_call. (* call p256_point_add_vartime_if_doubling *)
@@ -738,7 +743,7 @@ Proof.
   assert (Z.to_nat _ = length sscalar) as -> by lia.
   rewrite firstn_all.
   reflexivity.
-Admitted.
+Qed.
 
 Lemma p256_point_mul_ok : program_logic_goal_for_function! p256_point_mul.
 Proof.

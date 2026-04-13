@@ -1,8 +1,10 @@
 Require Import String coqutil.Datatypes.List.
 Require Import Bedrock.P256.Specs.
 Import Specs.NotationsCustomEntry Specs.coord Specs.point.
-Import bedrock2.Syntax bedrock2.NotationsCustomEntry
+Import bedrock2.Syntax
+bedrock2.NotationsCustomEntry
 bedrock2.ZnWords
+bedrock2.wsize
 LittleEndianList
 Crypto.Util.ZUtil.Modulo Zdiv ZArith BinInt
 BinInt BinNat Init.Byte
@@ -20,7 +22,6 @@ Tactics
 UniquePose
 Word.Properties
 memcpy.
-From bedrock2 Require Import wsize.
 Require Import Coq.Lists.List.
 Require Import Coq.Classes.Morphisms.
 Import ProgramLogic.Coercions.
@@ -316,6 +317,13 @@ Proof.
   }
 Qed.
 
+Local Ltac subst_to_affine :=
+  repeat match goal with |- context [Jacobian.to_affine ?P] =>
+    match goal with H : context [Jacobian.to_affine P] |- _ =>
+      rewrite H
+    end
+  end.
+
 Lemma p256_mul_by_pow2_ok : program_logic_goal_for_function! p256_mul_by_pow2.
 Proof.
   repeat straightline.
@@ -341,7 +349,9 @@ Proof.
   { (* Base case. *)
     repeat straightline.
     ecancel_assumption. }
-  { repeat straightline.
+  {
+    intros ? ?kP ? ? ? ? ?power.
+     repeat straightline.
     (* Induction case. *)
     { straightline_call. (* call p256_point_double *)
       { split.
@@ -357,7 +367,7 @@ Proof.
       repeat straightline.
       (* Deallocate stack. *)
       seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ a) H11 ltac:(rewrite length_point; lia).
-      assert (length (to_bytes (Jacobian.double_minus_3 eq_refl x)) = sizeof_point) by (rewrite length_point; trivial).
+      assert (length (to_bytes (Jacobian.double_minus_3 eq_refl kP)) = sizeof_point) by (rewrite length_point; trivial).
       repeat straightline.
       eexists _, _, (word.unsigned n).
       repeat straightline.
@@ -367,7 +377,7 @@ Proof.
       repeat straightline.
       eexists _.
       ssplit; try ecancel_assumption; trivial.
-      rewrite H14.
+      subst_to_affine.
       subst n.
       rewrite word.unsigned_sub, word.unsigned_of_Z_nowrap by lia.
       cbv [word.wrap].
@@ -376,7 +386,7 @@ Proof.
       rewrite Jacobian.to_affine_double.
       rewrite <-ScalarMult.scalarmult_2_l.
       rewrite ScalarMult.scalarmult_assoc.
-      assert (2 * 2 ^ (word.unsigned x2 - 1) = 2 ^ word.unsigned x2) as ->.
+      assert (2 * 2 ^ (word.unsigned power - 1) = 2 ^ word.unsigned power) as ->.
       { rewrite <-Z.pow_succ_r by ZnWords.
         f_equal.
         lia. }
@@ -438,9 +448,9 @@ Lemma positional_skipn_nth (i : nat) B l d :
   (i > 0) -> (i - 1 < length l)%nat ->
     positional B (skipn (i - 1) l) = positional B (skipn i l) * B + (nth (i - 1) l d).
 Proof.
-  intros.
+  intros ? iBound.
   remember (positional B (skipn i l) * B + nth (i - 1) l d).
-  rewrite <-(firstn_nth_skipn _ (i - 1) l d H0).
+  rewrite <-(firstn_nth_skipn _ (i - 1) l d iBound).
   rewrite skipn_app.
   rewrite skipn_all2; try (rewrite length_firstn; lia).
   rewrite app_nil_l, length_firstn.
@@ -455,14 +465,14 @@ Qed.
 Lemma positional_app B a b :
   positional B (a ++ b) = positional B a + B ^ length a * positional B b.
 Proof.
-  induction a.
+  induction a as [|? ? Hyp].
   { rewrite app_nil_l.
     rewrite length_nil.
     cbn [positional fold_right].
     lia. }
   { rewrite <-app_comm_cons.
     rewrite !positional_cons.
-    rewrite IHa.
+    rewrite Hyp.
     rewrite length_cons.
     rewrite Z.mul_add_distr_l.
     rewrite Z.mul_assoc.
@@ -488,9 +498,9 @@ Lemma positional_firstn_nth_skipn_prev (i : nat) B l d :
   positional B l =
   positional B (skipn i l) * B ^ i + (nth (i - 1) l d) * B ^ (i - 1) + positional B (firstn (i - 1) l).
 Proof.
-  intros.
+  intros ? iBound.
   remember (positional B (skipn i l) * B ^ i + (nth (i - 1) l d) * B ^ (i - 1) + positional B (firstn (i - 1) l)).
-  rewrite <-(firstn_nth_skipn _ (i - 1) l d H0).
+  rewrite <-(firstn_nth_skipn _ (i - 1) l d iBound).
   rewrite ?positional_app.
   rewrite length_firstn, length_cons, length_nil.
   replace (Nat.min (i - 1) (length l)) with (i - 1)%nat by lia.
@@ -504,13 +514,6 @@ Proof.
   assert (Z.of_nat (i - 1) = Z.of_nat i - 1) as -> by lia.
   lia.
 Qed.
-
-Local Ltac subst_to_affine :=
-  repeat match goal with |- context [Jacobian.to_affine ?P] =>
-    match goal with H : context [Jacobian.to_affine P] |- _ =>
-      rewrite H
-    end
-  end.
 
 Lemma p256_point_mul_signed_ok :
   (* Use the alternative spec for p256_point_add_vartime_if_doubling. *)
@@ -687,7 +690,8 @@ Proof.
       repeat straightline.
       eexists _.
       ssplit; try ecancel_assumption; trivial.
-      rewrite H42, H35.
+      subst_to_affine.
+      rewrite H35.
       rewrite Jacobian.to_affine_add.
       subst_to_affine.
       rewrite word.unsigned_of_Z_nowrap by lia.
@@ -734,7 +738,7 @@ Proof.
   repeat straightline.
   eexists _.
   ssplit; try ecancel_assumption; try exact eq_refl.
-  rewrite H15.
+  subst_to_affine.
   rewrite Jacobian.to_affine_of_affine.
   rewrite ScalarMult.scalarmult_zero_r.
   rewrite Hierarchy.left_identity.
@@ -789,6 +793,7 @@ Proof.
   repeat straightline.
   eexists _.
   ssplit; try ecancel_assumption; trivial.
-  rewrite H25, H23, <-H18.
+  subst_to_affine.
+  rewrite H23, <-H18.
   reflexivity.
 Qed.

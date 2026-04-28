@@ -243,7 +243,7 @@ Proof.
     rewrite IHbs.
     rewrite <-array1_iff_eq_of_list_word_at.
     { cancel. }
-    { apply mapok. }
+    { exact _. }
     { rewrite length_point. lia. }
   }
 Qed.

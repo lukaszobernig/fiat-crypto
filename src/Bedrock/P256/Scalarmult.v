@@ -172,6 +172,7 @@ Definition p256_point_mul :=
   fnspec! "p256_point_mul_signed" (p_out p_sscalar p_P : word) / out sscalar (P : point) R,
   { requires t m :=
     m =* out$@p_out * bytearray p_sscalar sscalar * P$@p_P * R /\
+    ~ Jacobian.iszero P /\
     length out = length P /\ length sscalar = num_limbs /\
     0 < positional_signed_bytes (2^w) sscalar < p256_group_order /\
     Forall (fun b => (-2^w + 2 <= 2*(byte.signed b) <= 2^w)) sscalar;
@@ -185,6 +186,7 @@ Definition p256_point_mul :=
   fnspec! "p256_point_mul" (p_out p_scalar p_P : word) / out scalar (P : point) R,
   { requires t m :=
     m =* out$@p_out * bytearray p_scalar scalar * P$@p_P * R /\
+    ~ Jacobian.iszero P /\
     length out = length P /\
     8 * (length scalar - 1) < num_bits <= 8 * length scalar /\
     0 < Z.of_bytes scalar < p256_group_order;
@@ -224,6 +226,27 @@ Definition W_multiples n P := map (fun i : nat => W.mul i P) (seq 0 n).
   }.
 
 
+
+Definition pointarray_to_bytes (pa : list point) := flat_map to_bytes pa.
+
+Lemma pointarray_iff_eq_of_bytearray_at (a : word) (bs : list point)
+  : Lift1Prop.iff1 (pointarray a bs) (bytearray a (pointarray_to_bytes bs)).
+Proof.
+  revert a; cbv [pointarray_to_bytes]; induction bs; intros.
+  { apply iff1_refl. }
+  {
+    rewrite array_cons.
+    rewrite ListUtil.List.flat_map_cons.
+    rewrite array_append.
+    rewrite word.unsigned_of_Z_1, Z.mul_1_l.
+    rewrite length_point.
+    rewrite IHbs.
+    rewrite <-array1_iff_eq_of_list_word_at.
+    { cancel. }
+    { apply mapok. }
+    { rewrite length_point. lia. }
+  }
+Qed.
 
 Lemma load1_sext_ok : program_logic_goal_for_function! load1_sext.
 Proof.
@@ -284,7 +307,6 @@ Proof.
   { ecancel_assumption. }
   { rewrite ?repeat_length; trivial. }
   { rewrite length_point; trivial. }
-
   subst x x0 x3.
   eexists; ssplit; repeat straightline. (* if ok *)
   { straightline_call; repeat straightline; ssplit (* memcpy *).
@@ -300,7 +322,6 @@ Proof.
     assert (Datatypes.length x6 = 96%nat) by ZnWords.ZnWords.
     repeat straightline.
     progress repeat seprewrite_in_by (@Array.array1_iff_eq_of_list_word_at) H43 ltac:(rewrite ?length_point in *; lia || ZnWords.ZnWords).
-
     rewrite <-word.unsigned_of_Z_0, !word.unsigned_inj_iff in H28 by exact _.
     rewrite !word.lor_0_iff, !word.broadcast_0_iff in H28.
     destruct (iszero P) eqn:HP, (iszero Q) eqn:HQ in *; try intuition discriminate;
@@ -346,8 +367,7 @@ Proof.
       enough (~ Jacobian.iszero P \/ ~ Jacobian.iszero Q) by intuition; now left. }
     { rewrite <-Jacobian.eq_iff.
       pose proof (H20 HP HQ) as Hadd; rewrite Hx1zero in Hadd.
-      destruct Hadd as [[]|[]]; congruence. }
-  }
+      destruct Hadd as [[]|[]]; congruence. } }
 Qed.
 
 Local Ltac subst_to_affine :=
@@ -382,8 +402,7 @@ Proof.
   { (* Base case. *)
     repeat straightline.
     ecancel_assumption. }
-  {
-    intros ? ?kP ? ? ? ? ?power.
+  { intros ? ?kP ? ? ? ? ?power.
      repeat straightline.
     (* Induction case. *)
     { straightline_call. (* call p256_point_double *)
@@ -556,9 +575,7 @@ Proof.
   repeat straightline.
   straightline_call. (* call p256_precompute_multiples *)
   { seprewrite_in_by (Array.array1_iff_eq_of_list_word_at a) H6 ltac:(lia).
-    ssplit; try ecancel_assumption; trivial.
-    admit. (* ~ Jacobian.iszero P *)
-  }
+    ssplit; try ecancel_assumption; trivial. }
   repeat straightline.
   straightline_call. (* call p256_point_set_zero *)
   { ssplit; try ecancel_assumption; trivial. }
@@ -614,10 +631,10 @@ Proof.
       repeat straightline.
       assert (Z.to_nat (word.unsigned i) < length sscalar)%nat as i_bounded by ZnWords.
       pose proof (symmetry! firstn_nth_skipn _ (Z.to_nat (word.unsigned i)) sscalar x00 i_bounded) as sscalar_parts.
-      rewrite sscalar_parts in H35.
-      rewrite app_assoc, <-assoc_app_cons in H35.
-      seprewrite_in Array.bytearray_append H35.
-      cbn [bytearray] in H35.
+      rewrite sscalar_parts in H36.
+      rewrite app_assoc, <-assoc_app_cons in H36.
+      seprewrite_in Array.bytearray_append H36.
+      cbn [bytearray] in H36.
       rename x1 into shifted_out.
       straightline_call. (* call load1_sext *)
       { assert (i = word.of_Z (Z.of_nat (length (ListDef.firstn (Z.to_nat (word.unsigned i)) sscalar)))) as -> by listZnWords.
@@ -626,39 +643,25 @@ Proof.
       rename x1 into k.
       straightline_call. (* call p256_get_multiple *)
       { split; [|split; [|split; [|split]]].
-        4 : {
-          eapply H22.
-        }
-        {
-          seprewrite_in_by (Array.array1_iff_eq_of_list_word_at p_kP) H37 ltac:(lia).
-          ecancel_assumption.
-        }
-        {
-          rewrite length_point.
-          ZnWords.
-        }
-        {
-          rewrite <-(length_map Jacobian.to_affine).
-          erewrite Forall2_length by exact H22.
-          cbv [W_multiples].
-          trivial.
-        }
-        {
-          rewrite H39.
+        4 : { eapply H23. }
+        { seprewrite_in_by (Array.array1_iff_eq_of_list_word_at p_kP) H38 ltac:(lia).
+          ecancel_assumption. }
+        { rewrite length_point.
+          ZnWords. }
+        { rewrite <-(length_map Jacobian.to_affine).
+          erewrite Forall2_length by exact H23.
+          trivial. }
+        { rewrite H40.
           apply Forall_nth.
-          {
-            eapply Forall_impl; [| exact H10].
+          { eapply Forall_impl; [| exact H11].
             intros ? Hbounds.
             cbv [id] in Hbounds.
-            lia.
-          }
-          ZnWords.
-        }
-      }
+            lia. }
+          ZnWords. } }
       repeat straightline.
       rename x1 into kP.
       straightline_call. (* call p256_point_add_vartime_if_doubling *)
-      { seprewrite_in_by (Array.array1_iff_eq_of_list_word_at a3) H40 ltac:(lia).
+      { seprewrite_in_by (Array.array1_iff_eq_of_list_word_at a3) H41 ltac:(lia).
         ssplit; try ecancel_assumption; trivial.
         intros.
         subst_to_affine.
@@ -667,7 +670,7 @@ Proof.
         rewrite p256_mul_mod_n.
         unfold positional_signed_bytes in *.
         rewrite <- skipn_map in *.
-        rewrite H39.
+        rewrite H40.
         rewrite <- map_nth in *.
         (* TODO these could probably be cleaned up earlier in the proof. *)
         replace ((Z.to_nat (word.unsigned (word.sub x0 (word.of_Z 1))))) with ((Z.to_nat v - 1))%nat in * by ZnWords.
@@ -677,29 +680,22 @@ Proof.
         { apply Forall_firstn. rewrite Forall_map. assumption. }
         { apply Forall_skipn. rewrite Forall_map. assumption. }
         { apply Forall_nth. { rewrite Forall_map. assumption. } rewrite map_length. lia. }
-        {
-          intros [?N1 ?N2].
-          apply H34; split.
-          {
-            subst_to_affine. unfold positional.
+        { intros [?N1 ?N2].
+          apply H35; split.
+          { subst_to_affine. unfold positional.
             rewrite N2.
             rewrite ScalarMult.scalarmult_0_l, ScalarMult.scalarmult_zero_r.
             reflexivity. }
           { subst_to_affine.
-            rewrite H39, N1.
+            rewrite H40, N1.
             rewrite ScalarMult.scalarmult_0_l.
-            reflexivity.
-          }
-        }
+            reflexivity. } }
         { rewrite ListUtil.app_cons_app_app. rewrite <- app_assoc.
           replace ( skipn (Z.to_nat v) (map byte.signed sscalar)) with (skipn (S (Z.to_nat v - 1)) (map byte.signed sscalar)).
           2: { f_equal. lia. }
           rewrite firstn_nth_skipn.
           { unfold positional in *. lia. }
-          { rewrite map_length. lia. }
-        }
-      }
-
+          { rewrite map_length. lia. } } }
       repeat straightline.
       rename x1 into curr_out_new.
       straightline_call. (* call br_memcpy *)
@@ -707,10 +703,10 @@ Proof.
         ZnWords. }
       repeat straightline.
       (* Deallocate stack. *)
-      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ p_kP) H44 ltac:(rewrite length_point; lia).
+      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ p_kP) H45 ltac:(rewrite length_point; lia).
       assert (length (to_bytes kP) = 96%nat) by (rewrite length_point; trivial).
       (* Deallocate stack. *)
-      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ a3) H44 ltac:(rewrite length_point; lia).
+      seprewrite_in_by (symmetry! @Array.array1_iff_eq_of_list_word_at _ _ _ _ _ _ a3) H45 ltac:(rewrite length_point; lia).
       assert (length (to_bytes curr_out_new) = 96%nat) by (rewrite length_point; trivial).
       (* TODO: repeat straighline hangs here so we do it in steps. *)
       do 2 straightline.
@@ -720,13 +716,13 @@ Proof.
       repeat straightline.
       eexists _, _, _, _.
       repeat straightline.
-      { cbv [i] in H44.
-        seprewrite_in_by bytearray_firstn_nth_skipn H44 ltac:(ZnWords).
+      { cbv [i] in H45.
+        seprewrite_in_by bytearray_firstn_nth_skipn H45 ltac:(ZnWords).
         ssplit; try ecancel_assumption; trivial.
-        { rewrite H43.
+        { rewrite H44.
           rewrite Jacobian.to_affine_add.
           subst_to_affine.
-          rewrite H39.
+          rewrite H40.
           subst i v.
           rewrite ScalarMult.scalarmult_assoc.
           rewrite <-ScalarMult.scalarmult_add_l.
@@ -751,11 +747,11 @@ Proof.
       eexists _.
       ssplit; try ecancel_assumption; trivial.
       subst_to_affine.
-      rewrite H43.
+      rewrite H44.
       rewrite Jacobian.to_affine_add.
       subst_to_affine.
       rewrite word.unsigned_of_Z_nowrap by lia.
-      rewrite H39.
+      rewrite H40.
       subst v i.
       cbv [positional_signed_bytes].
       rewrite <-?skipn_map, <-?firstn_map.
@@ -787,7 +783,7 @@ Proof.
     ssplit; try ecancel_assumption; trivial.
     subst_to_affine.
     cbv [v].
-    rewrite H17.
+    rewrite H18.
     rewrite Znat.Z2Nat.inj_0, firstn_0.
     cbn [positional_signed_bytes positional List.map fold_right].
     rewrite ScalarMult.scalarmult_0_l.
@@ -796,10 +792,15 @@ Proof.
     rewrite ScalarMult.scalarmult_1_l.
     reflexivity. }
   repeat straightline.
-Admitted.
-
-  (* TODO: fix stack *)
-(*
+  (* Deallocate stack. *)
+  seprewrite_in pointarray_iff_eq_of_bytearray_at H17.
+  eassert (length (pointarray_to_bytes x) = 1632%nat).
+  { cbv [pointarray_to_bytes].
+    rewrite (flat_map_constant_length (c := 96)) by trivial.
+    rewrite <-(length_map Jacobian.to_affine).
+    erewrite Forall2_length by exact H20.
+    trivial. }
+  repeat straightline.
   eexists _.
   ssplit; try ecancel_assumption; try exact eq_refl.
   subst_to_affine.
@@ -811,7 +812,7 @@ Admitted.
   assert (Z.to_nat _ = length sscalar) as -> by lia.
   rewrite firstn_all.
   reflexivity.
-Qed.*)
+Qed.
 
 Lemma p256_point_mul_ok : program_logic_goal_for_function! p256_point_mul.
 Proof.
@@ -825,7 +826,7 @@ Proof.
   { unfold sscalar.
     rewrite length_firstn.
     lia. }
-  rewrite H12 in H2.
+  rewrite H13 in H2.
   set (word.add a (word.of_Z (Z.of_nat _))) in H2.
   straightline_call. (* call limbs_unpack *)
   { (* Solve limbs_unpack assumptions. *)
@@ -838,7 +839,7 @@ Proof.
   { (* Solve recode_wrap assumptions. *)
     ssplit; try ecancel_assumption; trivial.
     { ZnWords. }
-    { rewrite H18.
+    { rewrite H19.
       rewrite word.unsigned_of_Z_nowrap by lia.
       cbv [p256_group_order] in *.
       lia. }
@@ -848,7 +849,7 @@ Proof.
   { ssplit; try ecancel_assumption; trivial; try ZnWords. }
   repeat straightline.
   (* Restore stack by combining scalar and padding. *)
-  seprewrite_in_by (Array.bytearray_index_merge x0 padding) H22 ZnWords.
+  seprewrite_in_by (Array.bytearray_index_merge x0 padding) H23 ZnWords.
   assert (length (x0 ++ padding) = 56%nat).
   { rewrite length_app.
     cbv [padding].
@@ -858,6 +859,6 @@ Proof.
   eexists _.
   ssplit; try ecancel_assumption; trivial.
   subst_to_affine.
-  rewrite H23, <-H18.
+  rewrite H24, <-H19.
   reflexivity.
 Qed.

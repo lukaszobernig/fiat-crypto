@@ -37,7 +37,7 @@ Require Import Crypto.Spec.WeierstrassCurve.
 Require Import Crypto.Curves.Weierstrass.Affine.
 Require Import Crypto.Curves.Weierstrass.AffineProofs.
 Require Import Crypto.Curves.Weierstrass.P256.
-From Crypto.Bedrock.P256 Require Import Jacobian RecodeSpecs RecodeProofs.
+From Crypto.Bedrock.P256 Require Import Jacobian RecodeSpecs RecodeProofs PrecomputedMultiples.
 
 Module W.
   (* HACK: Rewrite W.eq * W.zero hangs with Proper (Logic.eq ==> W.eq ==> W.eq),
@@ -65,6 +65,9 @@ Existing Instance W.Proper_mul.
 (* TODO: should this be global somewhere? *)
 #[local] Notation sizeof_point := 96%nat.
 
+#[local] Notation pointarray := (Array.array (fun (p : word.rep) (Q : point) =>
+  sepclause_of_map ((to_bytes Q)$@p)) (word.of_Z (Z.of_nat sizeof_point))).
+
 (* Limb size (nonzero). *)
 #[local] Notation w := 5.
 #[local] Notation num_bits := 256%nat.
@@ -75,9 +78,6 @@ Existing Instance W.Proper_mul.
 (* Align helpers. *)
 Definition align_mask x mask := Z.land (x + mask) (Z.lnot mask).
 Definition align x a := align_mask x (a - 1).
-
-(*Definition p256_get_signed_mult :=
-  func! (p_out, p_P, k) { ... }.*)
 
 Definition load1_sext :=
   func! (p_b) ~> r {
@@ -122,18 +122,6 @@ Definition p256_point_mul :=
     decompose_to_limbs(p_sscalar, p_scalar, $num_bits); (* Unpack scalar into unsigned w-bit limbs. *)
     signed_recode(p_sscalar, $num_limbs); (* Recode scalar into signed w-bit limbs. *)
     p256_point_mul_signed(p_out, p_sscalar, p_P) (* Multiply using signed multiplication. *)
-  }.
-
-(* TODO: use existing. *)
-#[local] Instance spec_of_p256_get_signed_mult : spec_of "p256_get_signed_mult" :=
-  fnspec! "p256_get_signed_mult" (p_out p_P k : word) / out (P : point) R,
-  { requires t m :=
-    m =* out$@p_out * P$@p_P * R /\ length out = length P /\
-    -17 < (word.signed k) < 17;
-    ensures T M := exists (Q : point),
-    M =* Q$@p_out * P$@p_P * R /\
-    W.eq (Jacobian.to_affine Q) (W.mul (word.signed k) (Jacobian.to_affine P)) /\
-    T = t
   }.
 
 #[export] Instance spec_of_load1_sext : spec_of "load1_sext" :=
@@ -196,52 +184,21 @@ Definition p256_point_mul :=
       T = t
   }.
 
-
-
-From bedrock2 Require Import Array.
-#[local] Notation pointarray := (array (fun (p : word.rep) (Q : point) =>
-  sepclause_of_map ((to_bytes Q)$@p)) (word.of_Z (Z.of_nat sizeof_point))).
-Definition W_multiples n P := map (fun i : nat => W.mul i P) (seq 0 n).
-#[export] Instance spec_of_p256_precompute_multiples : spec_of "p256_precompute_multiples" :=
-  fnspec! "p256_precompute_multiples" p_table p_P / out (P : point) R,
-  { requires t m :=
-      m =* out$@p_table * P$@p_P * R /\
-      length out = (sizeof_point * 17)%nat /\
-      ~ Jacobian.iszero P;
-    ensures t' m := t' = t /\ exists out,
-      m =* pointarray p_table out * P$@p_P * R /\
-      List.Forall2 W.eq (map Jacobian.to_affine out) (W_multiples 17 (Jacobian.to_affine P))
-  }.
-#[export] Instance spec_of_p256_get_multiple : spec_of "p256_get_multiple" :=
-  fnspec! "p256_get_multiple" p_out p_table k / out (P : point) (multiples : list point) R,
-  { requires t m :=
-      m =* out$@p_out * pointarray p_table multiples * R /\
-      length out = length P /\
-      length multiples = 17%nat /\
-      Forall2 W.eq (map Jacobian.to_affine multiples) (W_multiples 17 (Jacobian.to_affine P)) /\
-      -17 < (word.signed k) < 17;
-    ensures t' m := t' = t /\ exists (out_point : point),
-      m =* out_point$@p_out * pointarray p_table multiples * R /\
-      W.eq (Jacobian.to_affine out_point) (W.mul (word.signed k) (Jacobian.to_affine P))
-  }.
-
-
-
 Definition pointarray_to_bytes (pa : list point) := flat_map to_bytes pa.
 
-Lemma pointarray_iff_eq_of_bytearray_at (a : word) (bs : list point)
+Lemma pointarray_iff_eq_bytearray (a : word) (bs : list point)
   : Lift1Prop.iff1 (pointarray a bs) (bytearray a (pointarray_to_bytes bs)).
 Proof.
   revert a; cbv [pointarray_to_bytes]; induction bs; intros.
   { apply iff1_refl. }
   {
-    rewrite array_cons.
+    rewrite Array.array_cons.
     rewrite ListUtil.List.flat_map_cons.
-    rewrite array_append.
+    rewrite Array.array_append.
     rewrite word.unsigned_of_Z_1, Z.mul_1_l.
     rewrite length_point.
     rewrite IHbs.
-    rewrite <-array1_iff_eq_of_list_word_at.
+    rewrite <-Array.array1_iff_eq_of_list_word_at.
     { cancel. }
     { exact _. }
     { rewrite length_point. lia. }
@@ -268,7 +225,7 @@ Qed.
 Lemma iszero_false_decidable P : iszero P = false -> ~ Jacobian.iszero P.
 Proof.
   unfold iszero.
-  destruct (Decidable.dec (Jacobian.iszero _)); [discriminate|trivial].
+  destruct (Crypto.Util.Decidable.dec (Jacobian.iszero _)); [discriminate|trivial].
 Qed.
 
 Import memcpy.
@@ -455,24 +412,6 @@ Proof.
   ssplit; try ecancel_assumption; trivial.
 Qed.
 
-Lemma positional_signed_bytes_cons B (h : byte) (t : list byte) :
-  positional_signed_bytes B (h :: t) = byte.signed h + B*(positional_signed_bytes B t).
-Proof. constructor. Qed.
-
-Lemma positional_signed_bytes_app B (l l' : list byte) :
-  positional_signed_bytes B (l ++ l') = positional_signed_bytes B l + B^(length l) * positional_signed_bytes B l'.
-Proof.
-  induction l as [| ? ? H].
-  { rewrite app_nil_l, length_nil.
-    cbn [positional_signed_bytes positional map fold_right].
-    lia. }
-  rewrite <-app_comm_cons, length_cons.
-  rewrite ?positional_signed_bytes_cons.
-  rewrite H.
-  rewrite Znat.Nat2Z.inj_succ, Z.pow_succ_r by lia.
-  lia.
-Qed.
-
 Lemma bytearray_firstn_nth_skipn l (i : word) start d :
   ((Z.to_nat (word.unsigned i)) < length l)%nat ->
     (Lift1Prop.iff1
@@ -592,7 +531,7 @@ Proof.
        W.eq (Jacobian.to_affine curr_out) (W.mul processed_scalar (Jacobian.to_affine P)) /\
        v = word.unsigned i /\
        0 <= v <= num_limbs /\
-       Forall2 W.eq (map Jacobian.to_affine table) (W_multiples 17 (Jacobian.to_affine P)) /\
+       Forall2 W.eq (map Jacobian.to_affine table) (W.multiples 17 (Jacobian.to_affine P)) /\
        m =* curr_out$@p_out * bytearray p_sscalar sscalar * P$@p_P * pointarray p_table table * R /\
        Z.of_nat (length sscalar) = num_limbs)
     (fun                              T M P_OUT P_SSCALAR P_P P_TABLE I => (* postcondition *)
@@ -793,8 +732,8 @@ Proof.
     reflexivity. }
   repeat straightline.
   (* Deallocate stack. *)
-  seprewrite_in pointarray_iff_eq_of_bytearray_at H17.
-  eassert (length (pointarray_to_bytes x) = 1632%nat).
+  seprewrite_in pointarray_iff_eq_bytearray H17.
+  assert (length (pointarray_to_bytes x) = 1632%nat).
   { cbv [pointarray_to_bytes].
     rewrite (flat_map_constant_length (c := 96)) by trivial.
     rewrite <-(length_map Jacobian.to_affine).
